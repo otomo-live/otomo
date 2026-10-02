@@ -1,0 +1,29 @@
+{
+  "party": {
+    "max_size": 4
+  },
+  "friends": {
+    "max_friends": 200
+  },
+  "names": {
+    "min_length": 3,
+    "max_length": 16,
+    "allowed_pattern": "^[A-Za-z0-9_]+$",
+    "rename_cooldown_hours": 24,
+    "reserved": ["admin", "moderator", "otomo", "staff", "system"]
+  },
+  "lobby": {
+    "settings": {
+      "expedition": {
+        "description": "Which expedition the party launches into.",
+        "allowed": ["expedition_1"],
+        "default": "expedition_1"
+      },
+      "difficulty": {
+        "description": "Enemy strength for the run.",
+        "allowed": ["normal", "hard"],
+        "default": "normal"
+      }
+    }
+  }
+}

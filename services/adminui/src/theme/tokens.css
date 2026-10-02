@@ -1,0 +1,303 @@
+/* Design tokens for the admin UI.
+ *
+ * The single source of colour. Every role the app paints with is a `--ds-*`
+ * custom property defined here, in a light value on `:root` and a dark value
+ * under both the OS preference and Ionic's dark-palette class. Components must
+ * not name a colour themselves; they consume these roles and the Ionic mapping
+ * at the bottom of each block.
+ *
+ * Contrast for `--ds-text` and `--ds-text-muted` against `--ds-bg` and
+ * `--ds-surface` is at least 4.5:1 in both themes.
+ */
+
+:root {
+  /* Surfaces and ink */
+  --ds-bg: #f4f5f7;
+  --ds-surface: #ffffff;
+  --ds-surface-raised: #ffffff;
+  --ds-border: #d7d8da;
+  --ds-text: #1f1f1f;
+  --ds-text-muted: #5b5f66;
+
+  /* Accent */
+  --ds-accent: #3f5c8c;
+  --ds-accent-contrast: #ffffff;
+
+  /* Status. Each has a foreground and a soft background so a badge, a dot and
+   * an inline message can share one role. */
+  --ds-ok: #1e7a46;
+  --ds-ok-soft: #e3f4ea;
+  --ds-warn: #8a5a00;
+  --ds-warn-soft: #fdf1da;
+  --ds-danger: #b3261e;
+  --ds-danger-soft: #fbe9e7;
+  --ds-danger-contrast: #ffffff;
+  --ds-info: #1a5fb4;
+  --ds-info-soft: #e6effb;
+  --ds-neutral: #5b5f66;
+  --ds-neutral-soft: #eceef1;
+
+  /* Categorical chart palette, colour-blind-safe (Okabe-Ito). Six is one more
+   * than the widest chart here paints, so a series colour never repeats. */
+  --ds-chart-1: #0072b2;
+  --ds-chart-2: #d55e00;
+  --ds-chart-3: #009e73;
+  --ds-chart-4: #cc79a7;
+  --ds-chart-5: #e69f00;
+  --ds-chart-6: #56b4e9;
+
+  /* Spacing scale, 4px grid */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 24px;
+  --ds-space-6: 32px;
+  --ds-space-7: 48px;
+  --ds-space-8: 64px;
+
+  /* Type scale */
+  --ds-font-size-xs: 0.75rem;
+  --ds-font-size-sm: 0.875rem;
+  --ds-font-size-md: 1rem;
+  --ds-font-size-lg: 1.125rem;
+  --ds-font-size-xl: 1.25rem;
+  --ds-font-size-2xl: 1.5rem;
+
+  --ds-line-height-tight: 1.25;
+  --ds-line-height-normal: 1.5;
+  --ds-line-height-relaxed: 1.7;
+
+  /* Radii and elevation */
+  --ds-radius-sm: 4px;
+  --ds-radius-md: 8px;
+  --ds-radius-lg: 12px;
+  --ds-shadow-1: 0 1px 2px rgb(15 23 42 / 12%);
+  --ds-shadow-2: 0 4px 12px rgb(15 23 42 / 16%);
+
+  /* Developer-facing monospace: request ids, JSON pointers, COM-5 codes. */
+  --ds-font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* ---------------------------------------------------------------------
+   * Ionic mapping
+   * ------------------------------------------------------------------- */
+  --ion-background-color: var(--ds-bg);
+  --ion-background-color-rgb: 244, 245, 247;
+  --ion-text-color: var(--ds-text);
+  --ion-text-color-rgb: 31, 31, 31;
+  --ion-item-background: var(--ds-surface);
+  --ion-card-background: var(--ds-surface);
+  --ion-toolbar-background: var(--ds-surface);
+  --ion-toolbar-color: var(--ds-text);
+  --ion-border-color: var(--ds-border);
+
+  --ion-color-primary: #3f5c8c;
+  --ion-color-primary-rgb: 63, 92, 140;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #37517b;
+  --ion-color-primary-tint: #526c97;
+
+  --ion-color-success: #1e7a46;
+  --ion-color-success-rgb: 30, 122, 70;
+  --ion-color-success-contrast: #ffffff;
+  --ion-color-success-contrast-rgb: 255, 255, 255;
+  --ion-color-success-shade: #1a6b3d;
+  --ion-color-success-tint: #35895a;
+
+  --ion-color-warning: #8a5a00;
+  --ion-color-warning-rgb: 138, 90, 0;
+  --ion-color-warning-contrast: #ffffff;
+  --ion-color-warning-contrast-rgb: 255, 255, 255;
+  --ion-color-warning-shade: #794f00;
+  --ion-color-warning-tint: #966b1a;
+
+  --ion-color-danger: #b3261e;
+  --ion-color-danger-rgb: 179, 38, 30;
+  --ion-color-danger-contrast: #ffffff;
+  --ion-color-danger-contrast-rgb: 255, 255, 255;
+  --ion-color-danger-shade: #9e211a;
+  --ion-color-danger-tint: #bb3c35;
+
+  --ion-color-medium: #5b5f66;
+  --ion-color-medium-rgb: 91, 95, 102;
+  --ion-color-medium-contrast: #ffffff;
+  --ion-color-medium-contrast-rgb: 255, 255, 255;
+  --ion-color-medium-shade: #50545a;
+  --ion-color-medium-tint: #6b6f76;
+}
+
+/* Base layout: 1280px-first, centred content. The page never scrolls sideways;
+ * a table that is too wide scrolls inside its own box. */
+.ds-page {
+  margin: 0 auto;
+  max-width: 1440px;
+  padding: var(--ds-space-4);
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .ds-page {
+    padding: var(--ds-space-6);
+  }
+}
+
+/* Dark values follow the OS preference... */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ds-bg: #121417;
+    --ds-surface: #1c1f24;
+    --ds-surface-raised: #24282e;
+    --ds-border: #3a4048;
+    --ds-text: #e8eaed;
+    --ds-text-muted: #a8b0ba;
+
+    --ds-accent: #8ab0e0;
+    --ds-accent-contrast: #10151c;
+
+    --ds-ok: #6fd08c;
+    --ds-ok-soft: #16301f;
+    --ds-warn: #e3b341;
+    --ds-warn-soft: #322813;
+    --ds-danger: #ff8a80;
+    --ds-danger-soft: #3a1a17;
+    --ds-danger-contrast: #10151c;
+    --ds-info: #79b8ff;
+    --ds-info-soft: #152a3f;
+    --ds-neutral: #a8b0ba;
+    --ds-neutral-soft: #2a2f36;
+
+    --ds-chart-1: #56b4e9;
+    --ds-chart-2: #e69f00;
+    --ds-chart-3: #43c59e;
+    --ds-chart-4: #e08fc0;
+    --ds-chart-5: #f0b429;
+    --ds-chart-6: #8ab0e0;
+
+    --ds-shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+    --ds-shadow-2: 0 4px 12px rgb(0 0 0 / 50%);
+
+    --ion-background-color: var(--ds-bg);
+    --ion-background-color-rgb: 18, 20, 23;
+    --ion-text-color: var(--ds-text);
+    --ion-text-color-rgb: 232, 234, 237;
+    --ion-item-background: var(--ds-surface);
+    --ion-card-background: var(--ds-surface);
+    --ion-toolbar-background: var(--ds-surface);
+    --ion-toolbar-color: var(--ds-text);
+    --ion-border-color: var(--ds-border);
+
+    --ion-color-primary: #8ab0e0;
+    --ion-color-primary-rgb: 138, 176, 224;
+    --ion-color-primary-contrast: #10151c;
+    --ion-color-primary-contrast-rgb: 16, 21, 28;
+    --ion-color-primary-shade: #7a9bc5;
+    --ion-color-primary-tint: #96bce8;
+
+    --ion-color-success: #6fd08c;
+    --ion-color-success-rgb: 111, 208, 140;
+    --ion-color-success-contrast: #10151c;
+    --ion-color-success-contrast-rgb: 16, 21, 28;
+    --ion-color-success-shade: #62b77b;
+    --ion-color-success-tint: #7dd598;
+
+    --ion-color-warning: #e3b341;
+    --ion-color-warning-rgb: 227, 179, 65;
+    --ion-color-warning-contrast: #10151c;
+    --ion-color-warning-contrast-rgb: 16, 21, 28;
+    --ion-color-warning-shade: #c89e39;
+    --ion-color-warning-tint: #e6bb54;
+
+    --ion-color-danger: #ff8a80;
+    --ion-color-danger-rgb: 255, 138, 128;
+    --ion-color-danger-contrast: #10151c;
+    --ion-color-danger-contrast-rgb: 16, 21, 28;
+    --ion-color-danger-shade: #e07970;
+    --ion-color-danger-tint: #ff958c;
+
+    --ion-color-medium: #a8b0ba;
+    --ion-color-medium-rgb: 168, 176, 186;
+    --ion-color-medium-contrast: #10151c;
+    --ion-color-medium-contrast-rgb: 16, 21, 28;
+    --ion-color-medium-shade: #949ba4;
+    --ion-color-medium-tint: #b1b8c1;
+  }
+}
+
+/* ...and Ionic's explicit dark-palette class, which is how a caller overrides
+ * the OS preference. `:root.ion-palette-dark` is Ionic's own selector; `.dark`
+ * is the plain-class spelling a host might set. */
+:root.ion-palette-dark,
+:root.dark,
+.dark {
+  --ds-bg: #121417;
+  --ds-surface: #1c1f24;
+  --ds-surface-raised: #24282e;
+  --ds-border: #3a4048;
+  --ds-text: #e8eaed;
+  --ds-text-muted: #a8b0ba;
+
+  --ds-accent: #8ab0e0;
+  --ds-accent-contrast: #10151c;
+
+  --ds-ok: #6fd08c;
+  --ds-ok-soft: #16301f;
+  --ds-warn: #e3b341;
+  --ds-warn-soft: #322813;
+  --ds-danger: #ff8a80;
+  --ds-danger-soft: #3a1a17;
+  --ds-danger-contrast: #10151c;
+  --ds-info: #79b8ff;
+  --ds-info-soft: #152a3f;
+  --ds-neutral: #a8b0ba;
+  --ds-neutral-soft: #2a2f36;
+
+  --ds-shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+  --ds-shadow-2: 0 4px 12px rgb(0 0 0 / 50%);
+
+  --ion-background-color: var(--ds-bg);
+  --ion-background-color-rgb: 18, 20, 23;
+  --ion-text-color: var(--ds-text);
+  --ion-text-color-rgb: 232, 234, 237;
+  --ion-item-background: var(--ds-surface);
+  --ion-card-background: var(--ds-surface);
+  --ion-toolbar-background: var(--ds-surface);
+  --ion-toolbar-color: var(--ds-text);
+  --ion-border-color: var(--ds-border);
+
+  --ion-color-primary: #8ab0e0;
+  --ion-color-primary-rgb: 138, 176, 224;
+  --ion-color-primary-contrast: #10151c;
+  --ion-color-primary-contrast-rgb: 16, 21, 28;
+  --ion-color-primary-shade: #7a9bc5;
+  --ion-color-primary-tint: #96bce8;
+
+  --ion-color-success: #6fd08c;
+  --ion-color-success-rgb: 111, 208, 140;
+  --ion-color-success-contrast: #10151c;
+  --ion-color-success-contrast-rgb: 16, 21, 28;
+  --ion-color-success-shade: #62b77b;
+  --ion-color-success-tint: #7dd598;
+
+  --ion-color-warning: #e3b341;
+  --ion-color-warning-rgb: 227, 179, 65;
+  --ion-color-warning-contrast: #10151c;
+  --ion-color-warning-contrast-rgb: 16, 21, 28;
+  --ion-color-warning-shade: #c89e39;
+  --ion-color-warning-tint: #e6bb54;
+
+  --ion-color-danger: #ff8a80;
+  --ion-color-danger-rgb: 255, 138, 128;
+  --ion-color-danger-contrast: #10151c;
+  --ion-color-danger-contrast-rgb: 16, 21, 28;
+  --ion-color-danger-shade: #e07970;
+  --ion-color-danger-tint: #ff958c;
+
+  --ion-color-medium: #a8b0ba;
+  --ion-color-medium-rgb: 168, 176, 186;
+  --ion-color-medium-contrast: #10151c;
+  --ion-color-medium-contrast-rgb: 16, 21, 28;
+  --ion-color-medium-shade: #949ba4;
+  --ion-color-medium-tint: #b1b8c1;
+}

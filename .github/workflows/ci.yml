@@ -1,0 +1,111 @@
+# Lint and test for the Go gateways and the admin UI on every push and pull request.
+name: Services CI
+
+on:
+  push:
+    paths:
+      - "services/gateway/**"
+      - "services/gateway_dev/**"
+      - "services/adminui/**"
+      - "ci/scripts/shared-package-drift.sh"
+  pull_request:
+    paths:
+      - "services/gateway/**"
+      - "services/gateway_dev/**"
+      - "services/adminui/**"
+      - "ci/scripts/shared-package-drift.sh"
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [gateway, gateway_dev]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+
+      - name: gofmt check
+        working-directory: services/${{ matrix.service }}
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        working-directory: services/${{ matrix.service }}
+        run: go vet ./...
+
+      - name: go test -race
+        working-directory: services/${{ matrix.service }}
+        run: go test -race ./...
+
+      - name: govulncheck
+        working-directory: services/${{ matrix.service }}
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  # adminui is a separate job rather than a third entry in the matrix above,
+  # which is built around setup-go and Go-specific steps (gofmt, govulncheck):
+  # a Node service there would mean every step carrying a conditional. Its Node
+  # version comes from .nvmrc, the same file a developer's version manager reads
+  # and the same major the image's build stage uses.
+  #
+  # Playwright is not run here. The E2E suite needs a browser download that this
+  # workflow would pay for on every push, and it is hand-run for now; see the
+  # service README.
+  adminui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/adminui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: services/adminui/.nvmrc
+          cache: npm
+          cache-dependency-path: services/adminui/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      # The analogue of the gofmt check above, and the reason .gitattributes pins
+      # eol=lf on the source files: a Windows editor writing CRLF fails here
+      # rather than showing up as a whole-file diff in review.
+      - name: prettier check
+        run: npm run format:check
+
+      - name: lint
+        run: npm run lint
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: test
+        run: npm run test
+
+      - name: build
+        run: npm run build
+
+  # gateway_dev carries copies of gateway's domain-free packages rather than
+  # importing them, and neither service's own suite can see the other copy. The
+  # check and its file list live in ci/scripts/shared-package-drift.sh, which
+  # Jenkins runs too (ci/scripts/go-checks.sh), so the two CIs cannot disagree
+  # about which files must match.
+  shared-package-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: diff the shared packages
+        run: ci/scripts/shared-package-drift.sh

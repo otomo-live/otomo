@@ -1,0 +1,4 @@
+{
+  "audience": "client",
+  "description": "Reserved namespace: presentation metadata the WebUI applies to other namespaces. Authored by a project, never assumed by the SPA."
+}

@@ -1,0 +1,27 @@
+{
+  "features.flags": {
+    "title": "Feature flags",
+    "order": ["new_shop", "seasonal_event", "chat_enabled"],
+    "groups": [
+      { "label": "Shop", "fields": ["new_shop"] },
+      { "label": "Social", "fields": ["chat_enabled"] }
+    ]
+  },
+  "balance.player": {
+    "title": "Player balance",
+    "order": ["max_health", "move_speed", "stamina_regen_per_s", "starting_gold", "level_cap"],
+    "groups": [
+      { "label": "Survivability", "fields": ["max_health", "stamina_regen_per_s"] },
+      { "label": "Movement", "fields": ["move_speed"] },
+      { "label": "Progression", "fields": ["starting_gold", "level_cap"] }
+    ]
+  },
+  "ui.motd": {
+    "title": "Message of the day",
+    "order": ["enabled", "severity", "title", "body", "starts_at", "ends_at"],
+    "groups": [
+      { "label": "Content", "fields": ["title", "body", "severity"] },
+      { "label": "Schedule", "fields": ["starts_at", "ends_at"] }
+    ]
+  }
+}

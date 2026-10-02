@@ -1,0 +1,8 @@
+*.sh         eol=lf
+Dockerfile   eol=lf
+dockerfile   eol=lf
+Jenkinsfile  eol=lf
+*.yml        eol=lf
+*.yaml       eol=lf
+*.conf       eol=lf
+*.sql        eol=lf

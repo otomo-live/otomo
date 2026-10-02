@@ -1,0 +1,8 @@
+{
+  "enabled": false,
+  "title": "Welcome to Otomo",
+  "body": "The servers are online. Have fun!",
+  "severity": "info",
+  "starts_at": "2026-09-01T00:00:00Z",
+  "ends_at": "2026-12-31T23:59:59Z"
+}

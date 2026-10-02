@@ -1,0 +1,22 @@
+# The root .gitignore is deliberately minimal, so the frontend build products
+# and the local .env are ignored here, at the service, where they are produced.
+node_modules/
+dist/
+coverage/
+
+# Playwright writes both of these on every run.
+playwright-report/
+test-results/
+blob-report/
+
+# Local overrides. .env.example is tracked; .env is not (COM-9: real values
+# arrive through the Jenkins credential-backed env file at deploy time).
+.env
+.env.local
+.env.*.local
+
+*.tsbuildinfo
+.DS_Store
+
+# A dev server left running in the foreground writes these.
+*.log

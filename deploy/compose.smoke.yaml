@@ -1,0 +1,15 @@
+# Overrides for deploy/scripts/smoke-player-login.sh, and nothing else.
+#
+# A 2 s access token lets the smoke test watch a token expire, get refused with
+# 401 expired, refresh and retry, in about 35 s instead of 15 minutes. Verifiers
+# accept a token up to GATEWAY_JWT_CLOCK_SKEW (30 s) past exp, so that wait is
+# the leeway plus the TTL, not the TTL alone.
+#
+# Applied on top of compose.yaml:
+#   docker compose --env-file .env -f compose.yaml -f compose.smoke.yaml ...
+# The smoke script restores the normal auth container when it exits. Never deploy
+# with this file.
+services:
+  auth:
+    environment:
+      AUTH_ACCESS_TOKEN_TTL: 2s

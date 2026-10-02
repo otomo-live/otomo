@@ -1,0 +1,37 @@
+# Keeps pull request text and commit messages free of tool-generated footers and
+# co-author trailers for code assistants (CONTRIBUTING.md, "Pull requests").
+name: Hygiene
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [staging, main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  messages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title, description and commit messages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          pattern='co-authored-by:.*(claude|copilot|anthropic|chatgpt|openai|cursor|devin)|generated (with|by) .*(claude|copilot|chatgpt|\bai\b)|claude\.ai/code|claude-session:|noreply@anthropic\.com|copilot-swe-agent|🤖'
+          fail=0
+          if printf '%s\n%s\n' "$TITLE" "$BODY" | grep -inE "$pattern"; then
+            echo "::error::The pull request title or description contains a tool-generated footer or assistant attribution."
+            fail=1
+          fi
+          gh api "repos/$REPO/pulls/$PR/commits" --paginate --jq '.[] | "\(.sha) \(.commit.author.name) <\(.commit.author.email)>\n\(.commit.message)\n"' > commits.txt
+          if grep -inE "$pattern" commits.txt; then
+            echo "::error::A commit message or author carries a tool-generated footer or assistant attribution. Reword the commits (git rebase -i) and force-push the branch."
+            fail=1
+          fi
+          exit $fail

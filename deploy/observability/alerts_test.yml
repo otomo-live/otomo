@@ -1,0 +1,101 @@
+# OP-1: unit tests for observability/alerts.yml, run with
+#   cd observability && promtool test rules alerts_test.yml
+# One case per rule where it fires (after its `for`) and one where it does not.
+# `rule_files` is resolved relative to this file when promtool is run from
+# observability/.
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # PlayerServiceDown fires once a target has been down for its 1m `for`. The
+  # `service` label comes from the scrape config's static_config, which is what
+  # the summary template renders.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="auth",service="auth"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: PlayerServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: auth
+              service: auth
+            exp_annotations:
+              summary: 'auth is down'
+              description: 'Prometheus has failed to scrape auth (job auth) for at least 1 minute. Its metrics and every Dashboard panel built on them are stale.'
+
+  # ... and stays silent while the target is scrapeable.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="auth",service="auth"}'
+        values: '1x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PlayerServiceDown
+        exp_alerts: []
+
+  # NoFreeGameServers fires when the pool is non-empty but the free count has
+  # been 0 for 1m. The sums carry no labels of their own, so only the rule's
+  # severity survives.
+  - interval: 1m
+    input_series:
+      - series: 'allocator_servers{state="free"}'
+        values: '0x5'
+      - series: 'allocator_servers{state="busy"}'
+        values: '3x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: NoFreeGameServers
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: 'Allocator has servers but none free'
+              description: 'sum(allocator_servers{state="free"}) is 0 while the pool is non-empty, so every allocation is refused even though servers are registered. Check for servers stuck reserved or busy.'
+
+  # A free server exists, so the dispatch failure is not happening.
+  - interval: 1m
+    input_series:
+      - series: 'allocator_servers{state="free"}'
+        values: '1x5'
+      - series: 'allocator_servers{state="busy"}'
+        values: '3x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: NoFreeGameServers
+        exp_alerts: []
+
+  # GameServerPoolEmpty needs the longer 5m `for`. The Allocator exports every
+  # state (this is why the expression can see a pool of zeros rather than an
+  # absent series), so the empty pool is free/reserved/busy all at 0.
+  - interval: 1m
+    input_series:
+      - series: 'allocator_servers{state="free"}'
+        values: '0x10'
+      - series: 'allocator_servers{state="reserved"}'
+        values: '0x10'
+      - series: 'allocator_servers{state="busy"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: GameServerPoolEmpty
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 'Allocator game-server pool is empty'
+              description: 'No free, reserved or busy game server has been registered for 5 minutes. Expected until game servers are deployed (ticket GS-1); after that, players cannot be allocated a server.'
+
+  # A live server is registered, so the pool is not empty.
+  - interval: 1m
+    input_series:
+      - series: 'allocator_servers{state="free"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: GameServerPoolEmpty
+        exp_alerts: []

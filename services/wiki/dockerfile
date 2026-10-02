@@ -1,0 +1,51 @@
+# otomo wiki image.
+#
+# Stage 1 builds the static site with pinned MkDocs. The content is a named
+# build context ("content"), so one recipe builds any site:
+#     --build-context content=../docs          -> the technical wiki
+#     --build-context content=$SITE_CONTENT_DIR -> a game site
+#
+# Stage 2 serves the result with unprivileged nginx on 8080 under BASE_PATH.
+
+FROM python:3.13-slim AS build
+
+ARG BASE_PATH=/
+ARG SITE_URL=
+
+WORKDIR /wiki
+
+COPY requirements.txt /wiki/requirements.txt
+RUN pip install --no-cache-dir -r /wiki/requirements.txt
+
+COPY base.yml build.py /wiki/
+COPY --from=content . /content
+
+# BASE_PATH must be "/" or start and end with "/"; fail the build otherwise.
+RUN case "$BASE_PATH" in \
+      /) ;; \
+      /*/) ;; \
+      *) echo "wiki: BASE_PATH must start and end with '/' (got '$BASE_PATH')" >&2; exit 1 ;; \
+    esac
+
+# MkDocs output lands at /out${BASE_PATH}, matching the runtime layout.
+# SITE_URL is optional: when empty the ${SITE_URL:+...} expansion is empty.
+RUN python /wiki/build.py /content /out${BASE_PATH} ${SITE_URL:+--site-url $SITE_URL}
+
+# --- runtime ----------------------------------------------------------------
+# Render the nginx template in a separate stage so the unprivileged runtime
+# stage never needs to write /etc/nginx itself.
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS render
+
+ARG BASE_PATH=/
+
+COPY --chmod=0644 nginx.conf /tmp/nginx.conf.template
+RUN envsubst '${BASE_PATH}' < /tmp/nginx.conf.template > /tmp/nginx.conf
+
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+
+ARG BASE_PATH=/
+
+COPY --from=render /tmp/nginx.conf /etc/nginx/nginx.conf
+COPY --from=build /out/ /usr/share/nginx/html/
+
+EXPOSE 8080

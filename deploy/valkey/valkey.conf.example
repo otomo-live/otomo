@@ -1,0 +1,33 @@
+# The template for deploy/valkey/valkey.conf, which deploy/scripts/generate-secrets.sh
+# renders from it by substituting __VALKEY_PASSWORD__. That rendered file is
+# git-ignored; this one is tracked and holds no secret.
+#
+# Deliberately small. Valkey's defaults are sensible, and every directive added
+# here is one more thing that has to be right on a host nobody has looked at yet.
+# What is set is what this deployment cannot do without.
+
+# Docker's bridge network reaches containers over eth0, so binding the loopback
+# interface would make the cache unreachable from every service. The port is not
+# published, so the only thing that can reach this is otomo-net.
+bind 0.0.0.0
+port 6379
+
+protected-mode yes
+requirepass __VALKEY_PASSWORD__
+
+# AOF over RDB: the session service is the intended consumer (SES-A3) and an
+# fsync-every-second AOF loses at most a second of whatever it keeps, where an RDB
+# snapshot can lose the last few minutes. `everysec` rather than `always` because
+# this host also runs a latency-sensitive game server and AOF-always makes every
+# write wait for the disk.
+appendonly yes
+appendfsync everysec
+dir /data
+
+# No eviction. The default `noeviction` is kept on purpose: a session cache that
+# silently drops a logout or a revoked token under memory pressure is worse than
+# one that refuses the write, and failing loudly is the failure an operator can
+# see. If a future consumer genuinely wants a pure cache, that is a change to this
+# line and to its reasoning, not a default to inherit.
+maxmemory 192mb
+maxmemory-policy noeviction

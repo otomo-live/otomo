@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Player balance",
+  "description": "The baseline numbers a fresh player character starts from and the caps the systems scale against.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "max_health",
+    "move_speed",
+    "stamina_regen_per_s",
+    "starting_gold",
+    "level_cap"
+  ],
+  "properties": {
+    "max_health": {
+      "type": "integer",
+      "description": "Health a fresh character starts with and can never exceed.",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "move_speed": {
+      "type": "number",
+      "description": "Base movement speed in world units per second.",
+      "minimum": 0.1,
+      "maximum": 20
+    },
+    "stamina_regen_per_s": {
+      "type": "number",
+      "description": "Stamina regenerated each second while not sprinting.",
+      "minimum": 0
+    },
+    "starting_gold": {
+      "type": "integer",
+      "description": "Gold a fresh character begins with.",
+      "minimum": 0
+    },
+    "level_cap": {
+      "type": "integer",
+      "description": "Highest character level a player can reach.",
+      "minimum": 1,
+      "maximum": 200
+    }
+  }
+}

@@ -1,0 +1,5 @@
+# The whole interface between a content directory and the otomo wiki framework.
+# Only the keys below are allowed; anything else fails the build so a typo
+# cannot silently do nothing. See guide/writing-pages.md for the contract.
+site_name: Example Wiki
+site_description: A minimal, game-neutral content directory for the otomo wiki framework.

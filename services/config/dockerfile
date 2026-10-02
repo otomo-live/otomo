@@ -1,0 +1,20 @@
+FROM golang:1.27.1-bookworm AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+ARG GIT_SHA=dev
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${GIT_SHA}" -o /out/config .
+# The blob tree is created here and copied with the runtime uid, because the runtime
+# image is distroless: it has no shell, so it can neither mkdir nor chown. The .keep
+# file only exists so that the source directory is not empty — COPY copies a
+# directory's contents, and an empty source creates nothing.
+RUN mkdir -p /out/blobs && touch /out/blobs/.keep && chown -R 65532:65532 /out/blobs
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/config /config
+COPY --from=build --chown=nonroot:nonroot /out/blobs /var/lib/otomo/blobs
+EXPOSE 8080 9090
+ENTRYPOINT ["/config"]
+CMD ["serve"]

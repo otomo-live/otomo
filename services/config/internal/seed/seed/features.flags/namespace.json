@@ -1,0 +1,4 @@
+{
+  "audience": "client",
+  "description": "Boolean toggles that switch optional client features on or off."
+}

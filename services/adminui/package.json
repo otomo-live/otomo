@@ -1,0 +1,64 @@
+{
+  "name": "adminui",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Admin WebUI for the Otomo Config and Dashboard services",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:mock": "vite --mode mock",
+    "preview": "vite preview",
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "mock:init": "msw init mock/ --save"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "4.1.1",
+    "@codemirror/lang-json": "6.0.2",
+    "@codemirror/language": "6.12.4",
+    "@ionic/vue": "9.0.4",
+    "@ionic/vue-router": "9.0.4",
+    "@lezer/highlight": "1.2.3",
+    "@tanstack/vue-virtual": "3.13.39",
+    "codemirror": "6.0.2",
+    "pinia": "3.0.4",
+    "qrcode": "1.5.4",
+    "uplot": "1.6.32",
+    "vue": "3.5.43",
+    "vue-router": "4.6.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^24.0.0",
+    "@types/qrcode": "1.5.6",
+    "@vitejs/plugin-vue": "6.0.9",
+    "@vue/test-utils": "2.5.1",
+    "eslint": "10.11.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-vue": "10.11.0",
+    "happy-dom": "20.14.5",
+    "msw": "2.15.0",
+    "prettier": "3.9.8",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.1",
+    "vite": "8.3.0",
+    "vitest": "5.0.1",
+    "vue-eslint-parser": "10.4.1",
+    "vue-tsc": "3.3.11"
+  },
+  "msw": {
+    "workerDirectory": [
+      "mock"
+    ]
+  }
+}

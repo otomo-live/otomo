@@ -1,0 +1,75 @@
+{
+  "name": "ui.presentation",
+  "audience": "client",
+  "description": "Reserved namespace: presentation metadata the WebUI applies to other namespaces. Authored by a project, never assumed by the SPA.",
+  "schema": {
+    "schema_version": 2,
+    "created_by": "admin@example.com",
+    "created_at": "2026-09-05T13:20:00Z",
+    "body": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "UI presentation",
+      "description": "Maps a Config namespace name to optional presentation metadata. Degradation is deliberate and one-way: a name this document mentions that the target namespace does not define is ignored, and a field the target schema defines that this document does not mention is appended to a trailing group. That is what lets a game add a column without every presentation document having to be rewritten.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string" },
+          "order": { "type": "array", "items": { "type": "string" } },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "fields"],
+              "properties": {
+                "label": { "type": "string" },
+                "fields": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "render": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "style": { "type": "string", "enum": ["list", "table", "form"] },
+              "item": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "draft": {
+    "document": {
+      "balance.weapons": {
+        "title": "Weapons",
+        "order": ["name", "damage", "range", "rarity"],
+        "groups": [{ "label": "Impact", "fields": ["damage"] }],
+        "render": { "style": "list", "item": { "title": "name", "subtitle": "damage" } }
+      }
+    },
+    "revision": 7,
+    "base_version": 6,
+    "updated_by": "admin@example.com",
+    "updated_at": "2026-09-19T16:40:02Z"
+  },
+  "versions": [
+    {
+      "version": 6,
+      "schema_version": 2,
+      "message": "Describe the weapons list",
+      "created_by": "admin@example.com",
+      "created_at": "2026-09-12T10:05:00Z",
+      "sha256": "c4d7a0e2b5f81936c4d7a0e2b5f81936c4d7a0e2b5f81936c4d7a0e2b5f81936",
+      "document": {
+        "balance.weapons": {
+          "title": "Weapons",
+          "order": ["name", "damage", "range"],
+          "groups": [{ "label": "Impact", "fields": ["damage"] }]
+        }
+      }
+    }
+  ]
+}

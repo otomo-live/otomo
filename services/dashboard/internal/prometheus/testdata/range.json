@@ -1,0 +1,40 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "matrix",
+    "result": [
+      {
+        "metric": {
+          "__name__": "gateway_http_requests_total",
+          "method": "GET",
+          "route": "/health",
+          "service": "gateway",
+          "status": "200"
+        },
+        "values": [
+          [1789000000, "10"],
+          [1789000007, "999"],
+          [1789000015, "20"],
+          [1789000030, "30"],
+          [1789000045, "40"],
+          [1789000060, "50"]
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "gateway_http_requests_total",
+          "method": "GET",
+          "route": "/players",
+          "service": "gateway",
+          "status": "500"
+        },
+        "values": [
+          [1789000000, "1"],
+          [1789000030, "3"],
+          [1789000060, "5"],
+          [1789000075, "99"]
+        ]
+      }
+    ]
+  }
+}

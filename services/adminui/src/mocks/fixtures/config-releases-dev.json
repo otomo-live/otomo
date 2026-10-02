@@ -1,0 +1,120 @@
+{
+  "head_release_id": 3,
+  "releases": [
+    {
+      "release_id": 3,
+      "channel": "dev",
+      "manifest_sha256": "c0ffee0000000000000000000000000000000000000000000000000000000003",
+      "server_manifest_sha256": null,
+      "server_manifest": null,
+      "min_client_version": "1.1.0",
+      "message": "Publish balance.weapons 11 with the new weapon pack",
+      "created_by": "liveops@example.com",
+      "created_at": "2026-09-21T09:20:05Z",
+      "manifest": {
+        "format": 1,
+        "channel": "dev",
+        "release_id": 3,
+        "created_at": "2026-09-21T09:20:05Z",
+        "min_client_version": "1.1.0",
+        "config": {
+          "balance.weapons": {
+            "version": 11,
+            "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+            "size": 640
+          },
+          "ui.presentation": {
+            "version": 6,
+            "sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+            "size": 256
+          }
+        },
+        "packs": [
+          {
+            "name": "audio.pak",
+            "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "size": 4096
+          },
+          {
+            "name": "weapons.pak",
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "size": 2048
+          }
+        ]
+      }
+    },
+    {
+      "release_id": 2,
+      "channel": "dev",
+      "manifest_sha256": "c0ffee0000000000000000000000000000000000000000000000000000000002",
+      "server_manifest_sha256": null,
+      "server_manifest": null,
+      "min_client_version": "1.0.0",
+      "message": "Publish balance.weapons 10",
+      "created_by": "liveops@example.com",
+      "created_at": "2026-09-18T15:50:00Z",
+      "manifest": {
+        "format": 1,
+        "channel": "dev",
+        "release_id": 2,
+        "created_at": "2026-09-18T15:50:00Z",
+        "min_client_version": "1.0.0",
+        "config": {
+          "balance.weapons": {
+            "version": 10,
+            "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+            "size": 512
+          },
+          "ui.presentation": {
+            "version": 6,
+            "sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+            "size": 256
+          }
+        },
+        "packs": [
+          {
+            "name": "legacy.pak",
+            "sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+            "size": 512
+          },
+          {
+            "name": "weapons.pak",
+            "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+            "size": 1024
+          }
+        ]
+      }
+    },
+    {
+      "release_id": 1,
+      "channel": "dev",
+      "manifest_sha256": "c0ffee0000000000000000000000000000000000000000000000000000000001",
+      "server_manifest_sha256": null,
+      "server_manifest": null,
+      "min_client_version": "1.0.0",
+      "message": "First dev release",
+      "created_by": "admin@example.com",
+      "created_at": "2026-09-14T11:10:00Z",
+      "manifest": {
+        "format": 1,
+        "channel": "dev",
+        "release_id": 1,
+        "created_at": "2026-09-14T11:10:00Z",
+        "min_client_version": "1.0.0",
+        "config": {
+          "balance.weapons": {
+            "version": 9,
+            "sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+            "size": 384
+          },
+          "ui.presentation": {
+            "version": 5,
+            "sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+            "size": 192
+          }
+        },
+        "packs": []
+      }
+    }
+  ]
+}

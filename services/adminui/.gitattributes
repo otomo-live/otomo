@@ -1,0 +1,30 @@
+# COM-1: pin LF on everything a container reads directly. A CRLF shebang,
+# nginx directive or entrypoint fails inside the image with confusing errors.
+#
+# This service is the first non-Go one, so the file list is not the same as
+# services/gateway_dev/.gitattributes: there is no *.sql here, and *.json and
+# env.json matter because nginx serves them and a BOM or CRLF would reach the
+# browser. Unlike the root .gitattributes these are set without `text=`, which
+# is the shape services/gateway_dev already uses.
+#
+# Do NOT run `git add --renormalize .` repo-wide after this (design/08-auth-skeleton-plan.md:19);
+# only the paths this commit creates.
+*.sh         eol=lf
+Dockerfile   eol=lf
+dockerfile   eol=lf
+Jenkinsfile  eol=lf
+nginx.conf   eol=lf
+*.conf       eol=lf
+*.yml        eol=lf
+*.yaml       eol=lf
+*.json       eol=lf
+*.css        eol=lf
+*.html       eol=lf
+# Source files, for the same reason and one more: an editor on Windows can write
+# CRLF into one of these without anyone noticing, which shows up as a whole-file
+# diff in review even though the blob normalises. Declaring it here stops that at
+# the source rather than at `prettier --check` in CI.
+*.ts         eol=lf
+*.js         eol=lf
+*.vue        eol=lf
+*.md         eol=lf

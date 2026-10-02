@@ -1,0 +1,40 @@
+# Site settings for the otomo documentation (services/wiki, design/16-wiki-service.md).
+# Built from this directory; served at /docs/. Pages not listed here are still
+# built and searchable. Every page here is for teams using otomo; design documents
+# for people changing otomo itself live in design/, outside this site.
+site_name: Otomo Documentation
+site_description: Deploy otomo on your own VM and connect your Godot game to it.
+nav:
+  - Home: index.md
+  - Getting started:
+      - What is otomo?: start/what-is-otomo.md
+      - Before you begin: start/before-you-begin.md
+      - Deploy otomo on a VM: start/deploy-on-a-vm.md
+  - Concepts:
+      - How games go online: concepts/how-games-go-online.md
+      - HTTP and APIs: concepts/http-and-apis.md
+      - Logins and tokens: concepts/logins-and-tokens.md
+      - How otomo fits together: concepts/how-otomo-fits-together.md
+      - Content and patching: concepts/content-and-patching.md
+      - Parties and matches: concepts/parties-and-matches.md
+      - Servers and containers: concepts/servers-and-containers.md
+      - Command-line basics: concepts/command-line-basics.md
+  - Guides:
+      - Connect your game:
+          - Install the SDK: guide/install-the-sdk.md
+          - Publish your first content update: guide/first-patch.md
+          - Build a download screen: guide/download-screen.md
+          - Join a match: guide/joining-a-match.md
+      - Run otomo:
+          - Use the admin website: guide/admin-website.md
+          - Run a new game server build: guide/game-servers.md
+          - Wikis and sites: guide/wiki.md
+  - Reference:
+      - SDK reference: reference/sdk.md
+      - Error codes: reference/errors.md
+      - Glossary: reference/glossary.md
+  - Troubleshooting: troubleshooting.md
+theme:
+  palette:
+    primary: indigo
+    accent: teal

@@ -1,0 +1,66 @@
+{
+  "services": [
+    {
+      "name": "config",
+      "up": true,
+      "ready": true,
+      "reason": "",
+      "rps": 3.4,
+      "error_ratio": 0.0,
+      "p95_ms": 42,
+      "version": "4be751b"
+    },
+    {
+      "name": "dashboard",
+      "up": true,
+      "ready": true,
+      "reason": "",
+      "rps": 1.1,
+      "error_ratio": 0.002,
+      "p95_ms": 87,
+      "version": "4be751b"
+    },
+    {
+      "name": "gateway_dev",
+      "up": true,
+      "ready": true,
+      "reason": "",
+      "rps": 12.6,
+      "error_ratio": 0.004,
+      "p95_ms": null,
+      "version": "2679a9e"
+    },
+    {
+      "name": "admin-auth",
+      "up": true,
+      "ready": false,
+      "reason": "not_ready: database: dial tcp 10.0.3.4:5432: connect: connection refused",
+      "rps": 0.3,
+      "error_ratio": 0.0,
+      "p95_ms": 61,
+      "version": "php-2.4.1"
+    },
+    {
+      "name": "patch",
+      "up": false,
+      "ready": false,
+      "reason": "",
+      "rps": 0.0,
+      "error_ratio": 0.0,
+      "p95_ms": 0,
+      "version": "a5ad5e7"
+    }
+  ],
+  "host": { "cpu_ratio": 0.18, "mem_ratio": 0.44, "disk_ratio": null },
+  "online_players": 1284,
+  "alerts": [
+    {
+      "name": "GameServerPoolEmpty",
+      "severity": "warning",
+      "service": "",
+      "summary": "Allocator game-server pool is empty",
+      "active_at": "2026-09-29T02:00:00Z"
+    }
+  ],
+  "degraded": ["host.disk"]
+}

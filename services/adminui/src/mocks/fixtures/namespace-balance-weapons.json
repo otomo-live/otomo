@@ -1,0 +1,50 @@
+{
+  "name": "balance.weapons",
+  "audience": "client",
+  "description": "Per-weapon balance values shipped to the game client.",
+  "schema": {
+    "schema_version": 3,
+    "created_by": "admin@example.com",
+    "created_at": "2026-09-02T08:31:00Z",
+    "body": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "Weapon",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "damage", "range"],
+      "properties": {
+        "name": { "type": "string", "title": "Name", "minLength": 1 },
+        "damage": { "type": "integer", "title": "Damage", "minimum": 0, "maximum": 500 },
+        "range": { "type": "number", "title": "Range (m)", "minimum": 0 },
+        "ammo": { "type": "integer", "title": "Ammo", "minimum": 1, "default": 1 }
+      }
+    }
+  },
+  "draft": {
+    "document": { "name": "Arc Rifle", "damage": 40, "range": 18.5, "ammo": 6 },
+    "revision": 12,
+    "base_version": 11,
+    "updated_by": "liveops@example.com",
+    "updated_at": "2026-09-21T09:12:44Z"
+  },
+  "versions": [
+    {
+      "version": 10,
+      "schema_version": 3,
+      "message": "Nerf the Arc Rifle range",
+      "created_by": "liveops@example.com",
+      "created_at": "2026-09-14T11:02:10Z",
+      "sha256": "9f2a4c1e7b0d3856a1c4e7b0d3856a1c4e7b0d3856a1c4e7b0d3856a1c4e7b0d",
+      "document": { "name": "Arc Rifle", "damage": 40, "range": 21, "ammo": 6 }
+    },
+    {
+      "version": 11,
+      "schema_version": 3,
+      "message": "Match the October balance pass",
+      "created_by": "liveops@example.com",
+      "created_at": "2026-09-18T15:47:02Z",
+      "sha256": "3b8e1d5a9c0f2647b8e1d5a9c0f2647b8e1d5a9c0f2647b8e1d5a9c0f2647b8e",
+      "document": { "name": "Arc Rifle", "damage": 40, "range": 18.5, "ammo": 6 }
+    }
+  ]
+}

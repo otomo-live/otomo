@@ -1,0 +1,13 @@
+# The public edge: nginx terminating TLS for the player gateway and the
+# wiki sites. The certificate comes from the host's certbot (deploy/edge/), mounted
+# read-only; this image never talks to Let's Encrypt itself, so no restart can ever
+# spend a certificate from Let's Encrypt's weekly rate limit.
+FROM nginx:1.27-alpine
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY templates/ /etc/otomo-edge/templates/
+COPY edge-render edge-reload edge-entrypoint /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/edge-render /usr/local/bin/edge-reload /usr/local/bin/edge-entrypoint \
+    && mkdir -p /var/www/acme
+EXPOSE 80 443
+ENTRYPOINT ["/usr/local/bin/edge-entrypoint"]

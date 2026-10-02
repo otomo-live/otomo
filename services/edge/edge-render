@@ -1,0 +1,44 @@
+#!/bin/sh
+# Render /etc/nginx/conf.d/edge.conf for the current state of the host:
+# TLS mode when the certificate for EDGE_SERVER_NAME exists, bootstrap mode
+# (ACME challenges only) otherwise. Run by the entrypoint and by edge-reload,
+# which the host's certbot deploy hook calls after every issue or renewal.
+set -eu
+
+: "${EDGE_SERVER_NAME:?EDGE_SERVER_NAME must be set, e.g. play.example.com}"
+EDGE_GATEWAY_URL=${EDGE_GATEWAY_URL:-http://gateway:8080}
+EDGE_DOCS_URL=${EDGE_DOCS_URL:-http://wiki-docs:8080}
+EDGE_SITE_URL=${EDGE_SITE_URL:-}
+
+live=/etc/letsencrypt/live/$EDGE_SERVER_NAME
+out=/etc/nginx/conf.d/edge.conf
+tmp=$out.tmp
+
+if [ -s "$live/fullchain.pem" ] && [ -s "$live/privkey.pem" ]; then
+    mode=tls
+    if [ -n "$EDGE_SITE_URL" ]; then
+        EDGE_SITE_BLOCK="    location / {
+        set \$site $EDGE_SITE_URL;
+        proxy_pass \$site;
+    }"
+    else
+        EDGE_SITE_BLOCK="    location = / {
+        return 302 /docs/;
+    }
+
+    location / {
+        default_type text/plain;
+        return 404 \"not found\\n\";
+    }"
+    fi
+    export EDGE_SERVER_NAME EDGE_GATEWAY_URL EDGE_DOCS_URL EDGE_SITE_BLOCK
+    # Only our variables are substituted; nginx's own $vars pass through.
+    envsubst '${EDGE_SERVER_NAME} ${EDGE_GATEWAY_URL} ${EDGE_DOCS_URL} ${EDGE_SITE_BLOCK}' \
+        < /etc/otomo-edge/templates/tls.conf > "$tmp"
+else
+    mode=bootstrap
+    cp /etc/otomo-edge/templates/bootstrap.conf "$tmp"
+fi
+
+mv "$tmp" "$out"
+echo "edge-render: $mode mode for $EDGE_SERVER_NAME"

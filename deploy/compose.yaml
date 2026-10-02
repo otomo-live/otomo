@@ -1,0 +1,993 @@
+# COM-7: the Compose base file. Internal network, Postgres, Valkey, registry,
+# named volumes, and only the gateways reaching outside.
+#
+# Acceptance (design/00-common-stack.md:172): `docker compose up` brings up
+# infrastructure cleanly on a fresh VM. Everything host-specific is a variable,
+# so that is true of any VM, not only the one it was written on.
+#
+# Three decisions worth reading before changing anything:
+#
+# 1. NOTHING here publishes a port except the two gateways, and the registry on
+#    the loopback interface. Services address each other by Compose DNS
+#    (`postgres:5432`, `auth:8080`), which is what design/00-common-stack.md:74
+#    requires and what makes NET-1 (a second VM, Swarm overlay) a change to this
+#    file only, with no service code touched.
+#
+# 2. Both gateways bind the loopback interface by default. `gateway` is the
+#    player edge; it used to bind 0.0.0.0:8080 on the grounds that the host
+#    firewall allowed that port, but a Docker-published port is NATed in
+#    PREROUTING and forwarded, so it never passes through ufw-user-input: the UFW
+#    rule was decorative and the binding was the only real control. Reach the
+#    player edge with an SSH tunnel instead:
+#        ssh -L 8080:localhost:8080 you@your-server
+#    Set GATEWAY_BIND_ADDR in .env to publish it again deliberately. `gateway_dev`
+#    is the staff control plane and binds 127.0.0.1:8090, because its README says
+#    it "must not be internet-reachable" (services/gateway_dev/README.md:117):
+#    /admin-auth/ and /admin/ are unauthenticated by design, so exposure is a
+#    whole-service bypass, not a hardening nicety. Keeping it on the loopback
+#    interface means the host firewall does not have to be right for that to hold.
+#
+# 3. Secrets arrive through deploy/.env and two generated files beside it, never
+#    through this file or the repository (COM-9). See deploy/README.md. The
+#    Postgres and Valkey passwords therefore live in the container's environment
+#    or its config file rather than in this YAML, and `docker inspect` shows the
+#    environment ones to anyone who can talk to the daemon. That is the COM-9
+#    shape (an env file at deploy time) and it is called out in the README as the
+#    thing to replace when NET-1 moves this to Swarm secrets.
+#
+# The admin plane is here now: admin-auth, config, patch, dashboard and admin-ui,
+# and so is the player plane's first half: auth and session. Not here
+# on purpose are the two remaining stubs (allocator, matchmaker). Each is still a
+# `package main` that prints a line and exits, so any restart policy would loop it.
+# They join as their tickets land.
+
+name: otomo
+
+# Every container logs through json-file, which grows without limit by default.
+# This VM has 27 GB free and runs a game server, so an unbounded log is a real
+# way to fill it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  otomo-net:
+    name: otomo-net
+    driver: bridge
+    # Not `internal: true`. That flag also blocks egress to the internet, which
+    # the auth service will need for external identity providers (Google, Steam)
+    # and which nothing here needs today. The network is private because nothing
+    # publishes a port from it, which is what COM-7 asks for, not because traffic
+    # is filtered.
+
+  # The public tier: the edge, the player gateway and the wiki
+  # sites, and nothing else, so the internet-facing container cannot reach
+  # Postgres or any internal service. The subnet is fixed because the gateway
+  # trusts X-Forwarded-For from exactly one address, the edge's (below).
+  otomo-edge:
+    name: otomo-edge
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.250.0/28
+          # Dynamic addresses come from .8-.14 only, so the edge's fixed .2 can
+          # never be handed to whichever container joins the network first.
+          ip_range: 172.31.250.8/29
+
+volumes:
+  postgres-data:
+  valkey-data:
+  registry-data:
+  # Config writes its content-addressed blobs here and Patch reads the same tree
+  # back, mounted read-only. A named volume rather than a bind mount keeps the
+  # deployment's only large mutable tree out of the repository checkout.
+  blobs:
+  # Prometheus's TSDB and Loki's chunks/index are named volumes for the
+  # same reason - mutable data that must survive a container recreate and must not
+  # be written into the checkout. Alloy's own state is small but also lives on a
+  # volume so a restart does not re-read every container log.
+  prometheus-data:
+  loki-data:
+  alloy-data:
+
+services:
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    # Tuned for a 3.8 GB host that also runs Jenkins and a game server. The
+    # defaults (128MB shared_buffers, 100 connections) are not wrong, but
+    # max_connections is the number COM-14 has to stay under across every
+    # service's pool, so it is set deliberately rather than left at the default.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=192MB
+      - -c
+      - max_connections=80
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-otomo}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set it in deploy/.env, see deploy/.env.example}
+      POSTGRES_DB: postgres
+      POSTGRES_INITDB_ARGS: --data-checksums
+      # Read by deploy/postgres/init/01-provision.sh, which runs once, on the
+      # first start with an empty data directory, and by
+      # deploy/scripts/provision-upgrade.sh on a host whose data directory
+      # already exists. Passwords are passed in rather than written into the
+      # script so the script stays a tracked file.
+      AUTH_RW_PASSWORD: ${AUTH_RW_PASSWORD:?}
+      CONFIG_RW_PASSWORD: ${CONFIG_RW_PASSWORD:?}
+      SESSION_RW_PASSWORD: ${SESSION_RW_PASSWORD:?}
+      PATCH_RO_PASSWORD: ${PATCH_RO_PASSWORD:?}
+      ADMIN_AUTH_RW_PASSWORD: ${ADMIN_AUTH_RW_PASSWORD:?}
+      ALLOCATOR_RW_PASSWORD: ${ALLOCATOR_RW_PASSWORD:?}
+      # The postgres_exporter role is monitoring-only - pg_monitor and
+      # CONNECT on the `postgres` database, nothing else. Passed in like the rest
+      # so 01-provision.sh stays a tracked file with no password in it.
+      POSTGRES_EXPORTER_PASSWORD: ${POSTGRES_EXPORTER_PASSWORD:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # The role and database are the ones 01-provision.sh creates, not the
+      # superuser and `postgres`, and that is the point: Postgres's entrypoint
+      # starts a *temporary* server to run /docker-entrypoint-initdb.d, and that
+      # server answers pg_isready on the socket before any of the provisioning has
+      # happened. Checking for the superuser would therefore report healthy in a
+      # window where auth_rw does not exist yet, and a service that started in it
+      # would fail its migration. Asking for what the services actually need means
+      # "healthy" and "provisioned" are the same moment.
+      #
+      # pg_isready needs no password: it sends a startup packet and reports
+      # *rejecting* on the error a missing role or database produces, which is
+      # enough here and is why no credential appears in this line.
+      test: ["CMD-SHELL", "pg_isready -U auth_rw -d auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging: *logging
+    networks: [otomo-net]
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    # The password is in the mounted config file, not on this command line. An
+    # argument would be readable from `ps` by any local user, which is strictly
+    # worse than `docker inspect`, which needs daemon access.
+    command: ["valkey-server", "/etc/valkey/valkey.conf"]
+    volumes:
+      - valkey-data:/data
+      - ./valkey/valkey.conf:/etc/valkey/valkey.conf:ro
+    healthcheck:
+      # NOAUTH is not healthy: it means the password in the config file did not
+      # take effect, which would leave the cache open to anything on otomo-net.
+      test:
+        - CMD-SHELL
+        - "valkey-cli --no-auth-warning -a \"$$(awk '/^requirepass/{print $$2}' /etc/valkey/valkey.conf)\" ping | grep -q PONG"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    logging: *logging
+    networks: [otomo-net]
+
+  registry:
+    # Distribution 3. It is the release store COM-7 calls for: Jenkins pushes a
+    # tag per git SHA, and the compose file pulls that tag back. Loopback-bound,
+    # so it is not an open registry. Images are addressed as
+    # 127.0.0.1:5000/... from the host's own daemon, which trusts 127.0.0.0/8 by
+    # default; a hostname like registry:5000 would need an insecure-registries
+    # entry because Docker only exempts loopback from TLS. When NET-1 puts a
+    # second VM behind this, that is the change to make.
+    image: registry:3
+    restart: unless-stopped
+    environment:
+      # Off by default in the image. Turned on so a bad tag can be removed
+      # deliberately; nothing prunes automatically.
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry-data:/var/lib/registry
+    ports:
+      - "127.0.0.1:5000:5000"
+    # No healthcheck: the image is a static binary with no shell and no wget, and
+    # /v2/ is already the cheapest probe from outside. deploy/scripts/up.sh checks
+    # it there.
+    logging: *logging
+    networks: [otomo-net]
+
+  # ---------------------------------------------------------------------------
+  # Observability
+  # ---------------------------------------------------------------------------
+  #
+  # The Dashboard is a thin query layer; these are the stores and collectors it
+  # reads (design/01-dashboard.md §2). None of them publishes a port, which is what
+  # keeps them off the internet and is why the README reaches them over an SSH
+  # tunnel when debugging. They are ordinary services rather than a Compose
+  # profile so `docker compose up` brings the whole M1 stack up, dashboard and
+  # observability together.
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # 7d / 2GB are the DSH-A1 starting points; both are ceilings rather than
+      # reservations. Time wins normally, and the size cap is the guard for a
+      # metric-cardinality surprise that time alone would not catch.
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=2GB
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # OP-1: the alert rules, mounted beside the config because rule_files in
+      # prometheus.yml names it by its path relative to that config.
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+    logging: *logging
+    networks: [otomo-net]
+
+  loki:
+    image: grafana/loki:3.7.8
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./observability/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+    logging: *logging
+    networks: [otomo-net]
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    restart: unless-stopped
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./observability/config.alloy:/etc/alloy/config.alloy:ro
+      # Root-equivalent read access to the Docker API: this is what lets Alloy
+      # discover the project's containers and read their logs. It is accepted for
+      # M1 and explained in observability/config.alloy and design/01-dashboard.md
+      # §2.1, with NET-1 replacing it. Read-only the bind, but not the API.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    deploy:
+      resources:
+        limits:
+          memory: 100M
+    logging: *logging
+    networks: [otomo-net]
+
+  node_exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    # Host CPU, memory, disk, network and filesystem. The three host trees are
+    # read-only and the rootfs is mounted under /host, which --path.rootfs tells
+    # the exporter to resolve /proc and /sys through.
+    command:
+      - --path.rootfs=/host
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    deploy:
+      resources:
+        limits:
+          memory: 30M
+    logging: *logging
+    networks: [otomo-net]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    restart: unless-stopped
+    # The usual cAdvisor host mounts, all read-only. --docker_only drops the raw
+    # cgroup walk (we only care about containers here), the longer housekeeping
+    # interval lowers its CPU, and --disable_metrics turns off the collectors the
+    # Dashboard does not query so its memory stays inside the limit below.
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=15s
+      - --disable_metrics=advtcp,cpu_topology,disk,hugetlb,memory_numa,percpu,process,sched,tcp,udp
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    deploy:
+      resources:
+        limits:
+          memory: 80M
+    logging: *logging
+    networks: [otomo-net]
+
+  postgres_exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    restart: unless-stopped
+    environment:
+      # postgres_exporter is a monitoring role (pg_monitor, CONNECT on `postgres`
+      # only), not a service owner, so it is a role of its own rather than a
+      # reuse of the superuser. sslmode=disable because the connection stays on
+      # otomo-net and Postgres has no TLS listener.
+      DATA_SOURCE_NAME: postgresql://postgres_exporter:${POSTGRES_EXPORTER_PASSWORD:?}@postgres:5432/postgres?sslmode=disable
+    deploy:
+      resources:
+        limits:
+          memory: 30M
+    logging: *logging
+    networks: [otomo-net]
+
+  # ---------------------------------------------------------------------------
+  # Services
+  # ---------------------------------------------------------------------------
+
+  # One shot, and a normal service rather than a profile so that a plain
+  # `compose up` leaves a fresh VM with a current schema. goose records applied
+  # versions, so re-running it on every deploy is a no-op rather than a risk.
+  # Exits 0 and stays exited: `compose ps` shows it as such, which is expected.
+  auth-migrate:
+    image: 127.0.0.1:5000/otomo-auth:${OTOMO_AUTH_TAG:-local}
+    build:
+      context: ../services/auth
+      args:
+        GIT_SHA: ${OTOMO_AUTH_TAG:-local}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["migrate"]
+    environment:
+      AUTH_DATABASE_URL: postgres://auth_rw:${AUTH_RW_PASSWORD:?}@postgres:5432/auth?sslmode=disable
+    logging: *logging
+    networks: [otomo-net]
+
+  auth:
+    image: 127.0.0.1:5000/otomo-auth:${OTOMO_AUTH_TAG:-local}
+    build:
+      context: ../services/auth
+      args:
+        GIT_SHA: ${OTOMO_AUTH_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-migrate:
+        condition: service_completed_successfully
+    environment:
+      AUTH_DATABASE_URL: postgres://auth_rw:${AUTH_RW_PASSWORD:?}@postgres:5432/auth?sslmode=disable
+      AUTH_LISTEN_ADDR: ":8080"
+      AUTH_METRICS_ADDR: ":9090"
+      # A path, not a secret. This is the one service secret that cannot be an env
+      # var, and the design already assumes a mount
+      # (design/08-auth-skeleton-plan.md:95).
+      AUTH_SIGNING_KEY_PATH: /run/secrets/auth_signing_key.pem
+      AUTH_DB_MAX_CONNS: "8"
+      # Must equal the gateway's and session's player pairs exactly, which is why
+      # all three are written out here rather than left to identical defaults in
+      # different services; deploy/scripts/check-compose.sh fails on any drift.
+      AUTH_ISSUER: https://auth.otomo.internal
+      AUTH_AUDIENCE: otomo:player
+    volumes:
+      # The directory, not the file, and deliberately writable. Two reasons, both
+      # learned from services/auth/auth.go:254:
+      #
+      # 1. `auth genkey` writes this file and then inserts the matching
+      #    signing_key row, and `auth serve` refuses to start when the file's key
+      #    has no active row (auth.go:133). So the key cannot be generated by
+      #    openssl on the host: it has to come from the binary, against this
+      #    database. That runs as a one-shot through this same service
+      #    definition (`compose run --rm auth genkey`), which needs the mount to
+      #    be writable.
+      # 2. Mounting the file itself would be worse than useless before it exists:
+      #    Docker creates a *directory* at a missing bind source, and genkey would
+      #    then fail against a path that looks correct in `compose config`.
+      #
+      # Read-only would be marginally tidier, and buys nothing here: this service
+      # is the one that legitimately holds the key.
+      - ./secrets:/run/secrets
+    # No healthcheck, and this is a limitation rather than an omission: the image
+    # is gcr.io/distroless/static-debian12:nonroot, which has no shell, no wget
+    # and no curl, so a Compose test has nothing to run. Readiness is polled from
+    # the host instead (/healthz, /readyz on the internal listener), which is
+    # what COM-8's deploy step does anyway.
+    logging: *logging
+    networks: [otomo-net]
+
+  # admin-auth is the staff identity provider: it signs staff tokens and publishes
+  # the JWKS every other service verifies them against. It follows the auth pattern
+  # exactly - one-shot migrate, then serve - because it has the same goose-managed
+  # schema. It is named with a hyphen so the service DNS name is `admin-auth`, which
+  # is what the staff verifiers and gateway_dev point at.
+  admin-auth-migrate:
+    image: 127.0.0.1:5000/otomo-admin_auth:${OTOMO_ADMIN_AUTH_TAG:-local}
+    build:
+      context: ../services/admin_auth
+      args:
+        GIT_SHA: ${OTOMO_ADMIN_AUTH_TAG:-local}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["migrate"]
+    environment:
+      ADMIN_AUTH_DATABASE_URL: postgres://admin_auth_rw:${ADMIN_AUTH_RW_PASSWORD:?}@postgres:5432/admin_auth
+    logging: *logging
+    networks: [otomo-net]
+
+  admin-auth:
+    image: 127.0.0.1:5000/otomo-admin_auth:${OTOMO_ADMIN_AUTH_TAG:-local}
+    build:
+      context: ../services/admin_auth
+      args:
+        GIT_SHA: ${OTOMO_ADMIN_AUTH_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      admin-auth-migrate:
+        condition: service_completed_successfully
+    environment:
+      ADMIN_AUTH_LISTEN_ADDR: ":8080"
+      ADMIN_AUTH_METRICS_ADDR: ":9090"
+      ADMIN_AUTH_DATABASE_URL: postgres://admin_auth_rw:${ADMIN_AUTH_RW_PASSWORD:?}@postgres:5432/admin_auth
+      ADMIN_AUTH_DB_MAX_CONNS: "8"
+      # Paths, not secrets: the key files are generated into the mounted directory
+      # by generate-secrets.sh. `serve` refuses to start without the
+      # signing key, which is why up.sh checks for it before this service starts.
+      ADMIN_AUTH_SIGNING_KEY_PATH: /run/secrets/admin_auth/signing_key.pem
+      ADMIN_AUTH_TOTP_KEY_PATH: /run/secrets/admin_auth/totp.key
+      ADMIN_AUTH_ROOT_PASSWORD_FILE: /run/secrets/admin_auth/root_password
+      # Must equal every staff verifier's pair exactly, which is why the values
+      # are written out here rather than left to identical defaults in six
+      # services.
+      ADMIN_AUTH_ISSUER: https://admin-auth.otomo.internal
+      ADMIN_AUTH_AUDIENCE: otomo:staff
+      # Where the staff browser reaches gateway_dev, so invite and reset links
+      # point at the tunnel URL rather than at a service name.
+      ADMIN_AUTH_PUBLIC_URL: http://localhost:8090
+    volumes:
+      # The directory, not a file, and deliberately writable, for the same reason
+      # auth's mount is (see auth above): genkey writes signing_key.pem here and
+      # refuses to overwrite an existing file. generate-secrets.sh owns creating
+      # the files; this mount only gives the binary a writable path.
+      - ./secrets/admin_auth:/run/secrets/admin_auth
+    logging: *logging
+    networks: [otomo-net]
+
+  # Session owns the player's social state: profiles and parties in Postgres,
+  # presence and the event stream in Valkey. It verifies player tokens against
+  # auth's JWKS and staff tokens against admin-auth's, and mints neither. It
+  # follows the auth pattern: one-shot migrate, then serve.
+  session-migrate:
+    image: 127.0.0.1:5000/otomo-session:${OTOMO_SESSION_TAG:-local}
+    build:
+      context: ../services/session
+      args:
+        GIT_SHA: ${OTOMO_SESSION_TAG:-local}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["migrate"]
+    environment:
+      SESSION_DATABASE_URL: postgres://session_rw:${SESSION_RW_PASSWORD:?}@postgres:5432/session?sslmode=disable
+    logging: *logging
+    networks: [otomo-net]
+
+  session:
+    image: 127.0.0.1:5000/otomo-session:${OTOMO_SESSION_TAG:-local}
+    build:
+      context: ../services/session
+      args:
+        GIT_SHA: ${OTOMO_SESSION_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      session-migrate:
+        condition: service_completed_successfully
+      # Started, not healthy: neither has a healthcheck (distroless), and Session
+      # starts without its issuers anyway - it rejects every token on a domain
+      # until that domain's keys arrive, with /readyz at 503 meanwhile.
+      auth:
+        condition: service_started
+      admin-auth:
+        condition: service_started
+    environment:
+      SESSION_LISTEN_ADDR: ":8080"
+      SESSION_METRICS_ADDR: ":9090"
+      SESSION_DATABASE_URL: postgres://session_rw:${SESSION_RW_PASSWORD:?}@postgres:5432/session?sslmode=disable
+      SESSION_DB_MAX_CONNS: "8"
+      # The password is the one generate-secrets.sh renders into valkey.conf. It is
+      # 48 hex characters, so it needs no escaping inside the URL.
+      SESSION_VALKEY_URL: valkey://default:${VALKEY_PASSWORD:?}@valkey:6379/0
+      # The player pair must equal auth's AUTH_ISSUER/AUTH_AUDIENCE and the
+      # gateway's GATEWAY_PLAYER_* exactly; deploy/scripts/check-compose.sh fails
+      # the build if any of them drifts.
+      SESSION_PLAYER_JWKS_URL: http://auth:8080/.well-known/jwks.json
+      SESSION_PLAYER_ISSUER: https://auth.otomo.internal
+      SESSION_PLAYER_AUDIENCE: otomo:player
+      SESSION_STAFF_JWKS_URL: http://admin-auth:8080/.well-known/jwks.json
+      SESSION_STAFF_ISSUER: https://admin-auth.otomo.internal
+      SESSION_STAFF_AUDIENCE: otomo:staff
+      # LB-1: session.rules from the live server manifest on Patch's
+      # internal listener (CF-3), with the D4 key Session presents there.
+      SESSION_PATCH_URL: http://patch:8081
+      SESSION_PATCH_KEY_PATH: /run/secrets/service_keys/patch_session.key
+      SESSION_RULES_CHANNEL: live
+      # LB-3: lobby launches ask the Allocator for a game server, with
+      # the D4 key Session presents there.
+      SESSION_ALLOCATOR_URL: http://allocator:8080
+      SESSION_ALLOCATOR_KEY_PATH: /run/secrets/service_keys/allocator_session.key
+      # LB-4: the Allocator's end-of-match callback, on a listener of its
+      # own (ALLOCATOR_SESSION_URL is http://session:8081), with the D4 key the
+      # Allocator presents there. No gateway points at this port.
+      SESSION_INTERNAL_ADDR: ":8081"
+      SESSION_CALLBACK_KEY_PATH: /run/secrets/service_keys/session_allocator.key
+      # SE-8: player requests on another content release than the live
+      # one answer 409 release_outdated. Set to "true" once the SDK sends
+      # X-Otomo-Release; until then a request without it is let through.
+      SESSION_REQUIRE_RELEASE_HEADER: "false"
+    volumes:
+      - ./secrets/service_keys:/run/secrets/service_keys:ro
+    # No healthcheck and no published port, as for auth: distroless, and reached
+    # only through the gateways (:8080) and, for the Allocator, on otomo-net (:8081).
+    logging: *logging
+    networks: [otomo-net]
+
+  # The Allocator owns the game-server pool and allocations and signs
+  # join tickets. It is internal-only: no published port and no route on either
+  # gateway, so its :8080 is reachable from otomo-net alone. Callers authenticate
+  # with per-role service keys (design/14-launch-handoff.md §4.1), mounted read-only
+  # from deploy/secrets/service_keys/. Same pattern as auth: migrate, then serve.
+  allocator-migrate:
+    image: 127.0.0.1:5000/otomo-allocator:${OTOMO_ALLOCATOR_TAG:-local}
+    build:
+      context: ../services/allocator
+      args:
+        GIT_SHA: ${OTOMO_ALLOCATOR_TAG:-local}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["migrate"]
+    environment:
+      ALLOCATOR_DATABASE_URL: postgres://allocator_rw:${ALLOCATOR_RW_PASSWORD:?}@postgres:5432/allocator?sslmode=disable
+    logging: *logging
+    networks: [otomo-net]
+
+  allocator:
+    image: 127.0.0.1:5000/otomo-allocator:${OTOMO_ALLOCATOR_TAG:-local}
+    build:
+      context: ../services/allocator
+      args:
+        GIT_SHA: ${OTOMO_ALLOCATOR_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      allocator-migrate:
+        condition: service_completed_successfully
+    environment:
+      ALLOCATOR_LISTEN_ADDR: ":8080"
+      ALLOCATOR_METRICS_ADDR: ":9090"
+      ALLOCATOR_DATABASE_URL: postgres://allocator_rw:${ALLOCATOR_RW_PASSWORD:?}@postgres:5432/allocator?sslmode=disable
+      ALLOCATOR_DB_MAX_CONNS: "8"
+      ALLOCATOR_SESSION_KEY_PATH: /run/secrets/service_keys/allocator_session.key
+      ALLOCATOR_GAMESERVER_KEY_PATH: /run/secrets/service_keys/allocator_gameserver.key
+      ALLOCATOR_CALLBACK_KEY_PATH: /run/secrets/service_keys/session_allocator.key
+      # The Gameplay Proxy reads the pool (GET /internal/servers) with this key.
+      ALLOCATOR_PROXY_KEY_PATH: /run/secrets/service_keys/allocator_proxy.key
+      ALLOCATOR_SESSION_URL: http://session:8081
+      # What clients are told to connect to: the Gameplay Proxy's public name and
+      # UDP port, never a game server's own address (decision D3).
+      ALLOCATOR_PUBLIC_ADDRESS: ${OTOMO_PUBLIC_HOST:-localhost}
+      ALLOCATOR_PUBLIC_PORT: ${GAMEPLAY_PROXY_PORT:-27000}
+      # The join-ticket signing key. Generated once by up.sh through
+      # `allocator genkey`, which refuses to overwrite it; the kid is its JWK
+      # thumbprint, so no database row goes with it.
+      ALLOCATOR_SIGNING_KEY_PATH: /run/secrets/allocator/signing_key.pem
+    volumes:
+      - ./secrets/service_keys:/run/secrets/service_keys:ro
+      # Writable for the same reason as auth's: genkey runs through this service
+      # definition and writes the key as the container's uid.
+      - ./secrets/allocator:/run/secrets/allocator
+    # No healthcheck (distroless); up.sh polls /readyz on :9090 from otomo-net.
+    logging: *logging
+    networks: [otomo-net]
+
+  # The Gameplay Proxy, the only public entry for game traffic (UDP 27000,
+  # design/14 §8, decision D3). It verifies each player's join ticket against the
+  # Allocator's JWKS and forwards them to the game server the ticket names, which it
+  # finds through the Allocator's pool read (the proxy service key). Game
+  # servers themselves publish nothing.
+  gameplay-proxy:
+    image: 127.0.0.1:5000/otomo-gameplay_proxy:${OTOMO_GAMEPLAY_PROXY_TAG:-local}
+    build:
+      context: ../services/gameplay_proxy
+      args:
+        GIT_SHA: ${OTOMO_GAMEPLAY_PROXY_TAG:-local}
+    restart: unless-stopped
+    depends_on: [allocator]
+    environment:
+      PROXY_LISTEN_ADDR: ":27000"
+      PROXY_METRICS_ADDR: ":9090"
+      PROXY_ALLOCATOR_URL: http://allocator:8080
+      PROXY_ALLOCATOR_KEY_PATH: /run/secrets/service_keys/allocator_proxy.key
+    # Public UDP on every interface: the Allocator tells clients to connect to
+    # OTOMO_PUBLIC_HOST:GAMEPLAY_PROXY_PORT (ALLOCATOR_PUBLIC_PORT above), and ufw
+    # allows UDP 27000-27002 (design/15 §1).
+    ports:
+      - "${GAMEPLAY_PROXY_PORT:-27000}:27000/udp"
+    volumes:
+      - ./secrets/service_keys:/run/secrets/service_keys:ro
+    # No healthcheck (distroless); up.sh polls /readyz on :9090 from otomo-net.
+    logging: *logging
+    networks: [otomo-net]
+
+  # The fixed game-server pool (design/14 §4.3, deploy/gameserver/README.md).
+  # Opt-in with COMPOSE_PROFILES=...,gameservers in deploy/.env, because the image
+  # wraps a Godot export copied into deploy/gameserver/build/, not something built
+  # from this repository. Each server registers its own internal_addr with the
+  # Allocator, which is how the Gameplay Proxy finds it; none publishes a port.
+  # `restart: always` because a server exits 0 when its match is over, and the
+  # restart is what gives the next match a fresh world.
+  gs-1: &gameserver
+    image: 127.0.0.1:5000/otomo-gameserver:${OTOMO_GAMESERVER_TAG:-local}
+    build:
+      context: ./gameserver
+    profiles: [gameservers]
+    restart: always
+    depends_on: [allocator]
+    environment:
+      OTOMO_GS_SERVER_ID: gs-1
+      OTOMO_GS_PORT: "7777"
+      OTOMO_GS_INTERNAL_ADDR: gs-1:7777
+      OTOMO_GS_CAPACITY: "4"
+      OTOMO_ALLOCATOR_URL: http://allocator:8080
+      OTOMO_ALLOCATOR_KEY_FILE: /run/secrets/service_keys/allocator_gameserver.key
+    volumes:
+      - ./secrets/service_keys:/run/secrets/service_keys:ro
+    logging: *logging
+    networks: [otomo-net]
+
+  gs-2:
+    <<: *gameserver
+    environment:
+      OTOMO_GS_SERVER_ID: gs-2
+      OTOMO_GS_PORT: "7777"
+      OTOMO_GS_INTERNAL_ADDR: gs-2:7777
+      OTOMO_GS_CAPACITY: "4"
+      OTOMO_ALLOCATOR_URL: http://allocator:8080
+      OTOMO_ALLOCATOR_KEY_FILE: /run/secrets/service_keys/allocator_gameserver.key
+
+  # Config owns the config database and the blob tree Patch serves. It follows the
+  # auth pattern: one-shot migrate, then serve, with the migration as a dependency
+  # so serve never sees a half-built schema.
+  config-migrate:
+    image: 127.0.0.1:5000/otomo-config:${OTOMO_CONFIG_TAG:-local}
+    build:
+      context: ../services/config
+      args:
+        GIT_SHA: ${OTOMO_CONFIG_TAG:-local}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["migrate"]
+    environment:
+      CONFIG_DATABASE_URL: postgres://config_rw:${CONFIG_RW_PASSWORD:?}@postgres:5432/config
+    logging: *logging
+    networks: [otomo-net]
+
+  config:
+    image: 127.0.0.1:5000/otomo-config:${OTOMO_CONFIG_TAG:-local}
+    build:
+      context: ../services/config
+      args:
+        GIT_SHA: ${OTOMO_CONFIG_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-migrate:
+        condition: service_completed_successfully
+      admin-auth:
+        condition: service_started
+    environment:
+      CONFIG_LISTEN_ADDR: ":8080"
+      CONFIG_METRICS_ADDR: ":9090"
+      CONFIG_DATABASE_URL: postgres://config_rw:${CONFIG_RW_PASSWORD:?}@postgres:5432/config
+      # A path inside the shared named volume. Config is the only writer; Patch
+      # mounts the same volume read-only below.
+      CONFIG_BLOB_ROOT: /var/lib/otomo/blobs
+      CONFIG_STAFF_JWKS_URL: http://admin-auth:8080/.well-known/jwks.json
+      CONFIG_STAFF_ISSUER: https://admin-auth.otomo.internal
+      CONFIG_STAFF_AUDIENCE: otomo:staff
+    volumes:
+      - blobs:/var/lib/otomo/blobs
+    logging: *logging
+    networks: [otomo-net]
+
+  # Patch reads the config database as the read-only patch_ro role and serves the
+  # same blob tree it does not own. No migrate: it owns no schema, so it waits on
+  # config-migrate instead.
+  patch:
+    image: 127.0.0.1:5000/otomo-patch:${OTOMO_PATCH_TAG:-local}
+    build:
+      context: ../services/patch
+      args:
+        GIT_SHA: ${OTOMO_PATCH_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      # Config first, always: the first container to mount the empty `blobs` volume
+      # decides its ownership. Config's image ships /var/lib/otomo/blobs owned by
+      # nonroot, so Docker copies that in; Patch's image has no such directory, and a
+      # volume Patch created first would be root-owned and unwritable for Config.
+      config:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      config-migrate:
+        condition: service_completed_successfully
+      admin-auth:
+        condition: service_started
+    environment:
+      PATCH_LISTEN_ADDR: ":8080"
+      PATCH_METRICS_ADDR: ":9090"
+      # patch_ro can read config and write nothing; that is the role's whole
+      # point (postgres/init/01-provision.sh:67), so the DSN names it and the
+      # database it cannot own.
+      PATCH_DATABASE_URL: postgres://patch_ro:${PATCH_RO_PASSWORD:?}@postgres:5432/config
+      PATCH_BLOB_ROOT: /var/lib/otomo/blobs
+      PATCH_STAFF_JWKS_URL: http://admin-auth:8080/.well-known/jwks.json
+      PATCH_STAFF_ISSUER: https://admin-auth.otomo.internal
+      PATCH_STAFF_AUDIENCE: otomo:staff
+      # CF-3: the server manifest and its blobs, for Session's rules
+      # loader. A separate listener that no gateway routes to and no port publishes,
+      # and every route on it needs the D4 key Session presents.
+      PATCH_INTERNAL_ADDR: ":8081"
+      PATCH_SESSION_KEY_PATH: /run/secrets/service_keys/patch_session.key
+    volumes:
+      # Read-only: Patch serves what Config wrote and must not be able to change
+      # a release.
+      - blobs:/var/lib/otomo/blobs:ro
+      - ./secrets/service_keys:/run/secrets/service_keys:ro
+    logging: *logging
+    networks: [otomo-net]
+
+  # Dashboard is a thin query layer. Prometheus and Loki are the observability stack below;
+  # until then the two upstream URLs name the services they will have, and the
+  # Dashboard degrades the panels that need them by design rather than refusing
+  # to start (services/dashboard/README.md:99).
+  dashboard:
+    image: 127.0.0.1:5000/otomo-dashboard:${OTOMO_DASHBOARD_TAG:-local}
+    build:
+      context: ../services/dashboard
+      args:
+        GIT_SHA: ${OTOMO_DASHBOARD_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      admin-auth:
+        condition: service_started
+      # The stores behind its two upstream URLs. `service_started`,
+      # not `service_healthy`: Prometheus and Loki are not part of the Dashboard's
+      # readiness by design (services/dashboard/README.md "Readiness"), so a store
+      # that is slow to come up must not hold the Dashboard out of rotation.
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+    environment:
+      DASHBOARD_LISTEN_ADDR: ":8080"
+      DASHBOARD_METRICS_ADDR: ":9090"
+      DASHBOARD_STAFF_JWKS_URL: http://admin-auth:8080/.well-known/jwks.json
+      DASHBOARD_STAFF_ISSUER: https://admin-auth.otomo.internal
+      DASHBOARD_STAFF_AUDIENCE: otomo:staff
+      DASHBOARD_PROMETHEUS_URL: http://prometheus:9090
+      DASHBOARD_LOKI_URL: http://loki:3100
+      # Comma-separated name=url pairs; the prober polls <url>/readyz. Only
+      # services defined in this file are listed, and admin_auth's underscore
+      # name is the one the grammar accepts (the service DNS name keeps the
+      # hyphen).
+      DASHBOARD_TARGETS: auth=http://auth:9090,admin-auth=http://admin-auth:9090,config=http://config:9090,patch=http://patch:9090,session=http://session:9090,gateway=http://gateway:9090,gateway_dev=http://gateway_dev:9090,dashboard=http://dashboard:9090,allocator=http://allocator:9090,gameplay-proxy=http://gameplay-proxy:9090
+    logging: *logging
+    networks: [otomo-net]
+
+  # The staff SPA. It publishes nothing: gateway_dev fronts it at /admin/ on the
+  # loopback interface, and the staff plane is never internet-reachable.
+  admin-ui:
+    image: 127.0.0.1:5000/otomo-adminui:${OTOMO_ADMINUI_TAG:-local}
+    build:
+      context: ../services/adminui
+    restart: unless-stopped
+    # No ports, and no environment: gateway_dev fronts this service at /admin/
+    # and addresses it as admin-ui:8080. nginxinc/nginx-unprivileged is the
+    # non-root variant, which serves on 8080 because it cannot bind port 80
+    # (services/adminui/README.md:102).
+    logging: *logging
+    networks: [otomo-net]
+
+  gateway:
+    image: 127.0.0.1:5000/otomo-gateway:${OTOMO_GATEWAY_TAG:-local}
+    build:
+      context: ../services/gateway
+      args:
+        GIT_SHA: ${OTOMO_GATEWAY_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      auth:
+        condition: service_started
+      admin-auth:
+        condition: service_started
+      session:
+        condition: service_started
+    environment:
+      GATEWAY_LISTEN_ADDR: ":8080"
+      GATEWAY_METRICS_ADDR: ":9090"
+      # The player domain is served by services/auth, which is in this stack, so
+      # this half of /readyz is green as soon as auth has keys.
+      GATEWAY_PLAYER_JWKS_URL: http://auth:8080/.well-known/jwks.json
+      GATEWAY_PLAYER_ISSUER: https://auth.otomo.internal
+      GATEWAY_PLAYER_AUDIENCE: otomo:player
+      # The staff domain is admin-auth, in this stack. The JWKS client retries in
+      # the background, so an admin-auth that is briefly down leaves the process
+      # serving with /readyz at 503 rather than in a boot loop
+      # (services/gateway/internal/authn/jwks.go:105).
+      GATEWAY_STAFF_JWKS_URL: http://admin-auth:8080/.well-known/jwks.json
+      GATEWAY_STAFF_ISSUER: https://admin-auth.otomo.internal
+      GATEWAY_STAFF_AUDIENCE: otomo:staff
+      # Every route's target must parse at startup or the process exits, so these
+      # are set from the start even where the service does not exist yet: a
+      # request to a missing upstream is a 502, which is visible and diagnosable,
+      # whereas a missing variable is a boot loop.
+      GATEWAY_UPSTREAM_AUTH_URL: http://auth:8080
+      GATEWAY_UPSTREAM_PATCH_URL: http://patch:8080
+      GATEWAY_UPSTREAM_SESSION_URL: http://session:8080
+      GATEWAY_READ_TIMEOUT: 10s
+      GATEWAY_WRITE_TIMEOUT: 30s
+      GATEWAY_IDLE_TIMEOUT: 120s
+      # The edge's fixed address on otomo-edge. Only from there is
+      # X-Forwarded-For believed (rightmost entry), so players behind the edge
+      # get their own rate-limit buckets and nobody else can spoof one.
+      GATEWAY_TRUSTED_PROXIES: 172.31.250.2
+    ports:
+      # The default is the port the host firewall already allows on the current
+      # CI/game VM. A different host sets GATEWAY_PORT in its .env and opens that
+      # port instead; nothing else in this file moves.
+      
+      # Loopback by default, like gateway_dev below. GATEWAY_BIND_ADDR and
+      # GATEWAY_PORT are .env variables; nothing else in this file moves.
+      - "${GATEWAY_BIND_ADDR:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080"
+    # No healthcheck: distroless, as above. Note that /healthz and /readyz are on
+    # the metrics listener, not on :8080 - the public listener carries routes only
+    # (services/gateway_dev/internal/server/server.go:105). :9090 is deliberately
+    # not published, and there is no shell to `compose exec` into, so reach it with
+    # a throwaway container on otomo-net, which is what deploy/scripts/up.sh does.
+    logging: *logging
+    networks: [otomo-net, otomo-edge]
+
+  # The public edge: TLS for the player gateway and the wiki sites.
+  # Opt-in with COMPOSE_PROFILES=edge in deploy/.env, on the one host that owns
+  # the public name. Its certificate is issued and renewed by the host's certbot
+  # (deploy/edge/certbot.sh), never by this container, so restarts cannot spend
+  # Let's Encrypt quota. Until the certificate exists it runs in bootstrap mode:
+  # ACME challenges on :80, 503 for everything else.
+  edge:
+    image: 127.0.0.1:5000/otomo-edge:${OTOMO_EDGE_TAG:-local}
+    build:
+      context: ../services/edge
+    profiles: [edge]
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_started
+    environment:
+      EDGE_SERVER_NAME: ${OTOMO_PUBLIC_HOST:-}
+      EDGE_GATEWAY_URL: http://gateway:8080
+      EDGE_DOCS_URL: http://wiki-docs:8080
+      EDGE_SITE_URL: ${EDGE_SITE_URL:-}
+    ports:
+      # The only public TCP ports in the stack. Docker publishes past ufw, so
+      # the matching ufw rules (deploy/edge/README.md) document intent rather
+      # than enforce it.
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ${EDGE_ACME_WEBROOT:-/var/lib/otomo-edge/acme}:/var/www/acme:ro
+    logging: *logging
+    networks:
+      otomo-edge:
+        ipv4_address: 172.31.250.2
+
+  # The wiki sites (design/16-wiki-service.md): static sites built by
+  # services/wiki from a content directory, served by unprivileged nginx on the
+  # public tier only. wiki-docs is the technical wiki (this repo's docs/, at
+  # /docs/); wiki-site is the optional site at / whose content lives in the
+  # game's own repository (SITE_CONTENT_DIR), redeployed by deploy/site/.
+  wiki-docs:
+    image: 127.0.0.1:5000/otomo-wiki-docs:${OTOMO_WIKI_DOCS_TAG:-local}
+    build:
+      context: ../services/wiki
+      additional_contexts:
+        content: ../docs
+      args:
+        BASE_PATH: /docs/
+    profiles: [edge]
+    restart: unless-stopped
+    logging: *logging
+    networks: [otomo-edge]
+
+  wiki-site:
+    image: 127.0.0.1:5000/otomo-wiki-site:${OTOMO_WIKI_SITE_TAG:-local}
+    build:
+      context: ../services/wiki
+      additional_contexts:
+        # The example keeps `compose config` valid on hosts without a site.
+        content: ${SITE_CONTENT_DIR:-../services/wiki/example}
+      args:
+        BASE_PATH: /
+    profiles: [site]
+    restart: unless-stopped
+    logging: *logging
+    networks: [otomo-edge]
+
+  gateway_dev:
+    image: 127.0.0.1:5000/otomo-gateway_dev:${OTOMO_GATEWAY_DEV_TAG:-local}
+    build:
+      context: ../services/gateway_dev
+      args:
+        GIT_SHA: ${OTOMO_GATEWAY_DEV_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      admin-auth:
+        condition: service_started
+      admin-ui:
+        condition: service_started
+    environment:
+      GATEWAY_DEV_LISTEN_ADDR: ":8080"
+      GATEWAY_DEV_METRICS_ADDR: ":9090"
+      GATEWAY_STAFF_JWKS_URL: http://admin-auth:8080/.well-known/jwks.json
+      GATEWAY_STAFF_ISSUER: https://admin-auth.otomo.internal
+      GATEWAY_STAFF_AUDIENCE: otomo:staff
+      # The upstream names are the ones services/gateway_dev/.env.example fixes.
+      # admin-ui is at :8080 because nginx-unprivileged cannot bind 80.
+      #
+      # adminauth serves both /admin-auth/* and /api/admin/users*, and is in
+      # this file now, so its URL is the fixed service name.
+      GATEWAY_DEV_UPSTREAM_ADMINAUTH_URL: http://admin-auth:8080
+      GATEWAY_DEV_UPSTREAM_ADMINUI_URL: http://admin-ui:8080
+      GATEWAY_DEV_UPSTREAM_CONFIG_URL: http://config:8080
+      GATEWAY_DEV_UPSTREAM_DASHBOARD_URL: http://dashboard:8080
+      GATEWAY_DEV_UPSTREAM_SESSION_URL: http://session:8080
+      GATEWAY_DEV_READ_TIMEOUT: 10s
+      GATEWAY_DEV_WRITE_TIMEOUT: 30s
+      GATEWAY_DEV_IDLE_TIMEOUT: 120s
+    ports:
+      # Loopback only: see the note at the top of this file.
+      - "127.0.0.1:${GATEWAY_DEV_PORT:-8090}:8080"
+    logging: *logging
+    networks: [otomo-net]

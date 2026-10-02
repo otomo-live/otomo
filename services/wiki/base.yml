@@ -1,0 +1,81 @@
+# otomo wiki framework: the MkDocs configuration every site inherits.
+#
+# A content directory supplies only _site.yml (site_name, an optional nav, and
+# a few theme keys). build.py deep-merges those allowed keys into this file and
+# runs `mkdocs build --strict`. Everything below is owned by the framework and
+# cannot be overridden by a content directory.
+#
+# Game-agnostic by design: nothing here names a game.
+
+# A placeholder so base.yml is a valid MkDocs config on its own. Every build
+# supplies the real value through the content's _site.yml site_name.
+site_name: Wiki
+
+theme:
+  name: material
+  # No Google Fonts and therefore no request to fonts.googleapis.com /
+  # fonts.gstatic.com; the site only ever talks to its own origin.
+  font: false
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+  # Light/dark toggle driven by the visitor's OS preference.
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist
+
+use_directory_urls: true
+
+# Never publish the content contract or the editor instructions.
+exclude_docs: |
+  /_site.yml
+  /README.md
+
+# MkDocs 1.6 validation. --strict turns the `warn` levels into build failures;
+# `info` stays informational.
+validation:
+  nav:
+    omitted_files: info
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: info
+    unrecognized_links: info
+
+# No "Made with Material" footer link: the site links nowhere it was not asked to.
+extra:
+  generator: false

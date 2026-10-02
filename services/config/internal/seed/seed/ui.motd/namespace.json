@@ -1,0 +1,4 @@
+{
+  "audience": "client",
+  "description": "The banner the client shows on the login and character-select screens."
+}

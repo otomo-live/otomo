@@ -1,0 +1,49 @@
+{
+  "status": "success",
+  "data": {
+    "activeTargets": [
+      {
+        "discoveredLabels": {},
+        "labels": {
+          "__meta_docker_container_name": "/gateway",
+          "instance": "gateway:9090",
+          "job": "gateway",
+          "service": "gateway"
+        },
+        "scrapePool": "gateway",
+        "scrapeUrl": "http://gateway:9090/metrics",
+        "lastError": "",
+        "lastScrape": "2024-05-01T10:00:00.123456789Z",
+        "lastScrapeDuration": 0.01,
+        "health": "up"
+      },
+      {
+        "discoveredLabels": {},
+        "labels": {
+          "instance": "config:9090",
+          "job": "config",
+          "service": "config"
+        },
+        "scrapePool": "config",
+        "scrapeUrl": "http://config:9090/metrics",
+        "lastError": "connection refused",
+        "lastScrape": "2024-05-01T10:00:01Z",
+        "lastScrapeDuration": 0.02,
+        "health": "down"
+      },
+      {
+        "discoveredLabels": {},
+        "labels": {
+          "instance": "prometheus:9090",
+          "job": "prometheus"
+        },
+        "scrapePool": "prometheus",
+        "scrapeUrl": "http://prometheus:9090/metrics",
+        "lastError": "",
+        "lastScrape": "2024-05-01T10:00:02Z",
+        "lastScrapeDuration": 0.03,
+        "health": "up"
+      }
+    ]
+  }
+}

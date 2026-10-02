@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Session rules",
+  "description": "Game rules Session enforces for every player (design/13-player-plane-plan.md CF-4, LB-1). Server-only: never sent to clients. Session loads them from the live server manifest and keeps its compiled-in defaults, or the last good document, when a value is missing or invalid.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["party", "friends", "names", "lobby"],
+  "properties": {
+    "party": {
+      "type": "object",
+      "description": "Limits on parties (a party is the lobby).",
+      "additionalProperties": false,
+      "required": ["max_size"],
+      "properties": {
+        "max_size": {
+          "type": "integer",
+          "description": "Most players a party may hold, leader included. Invites and accepts beyond it are refused.",
+          "minimum": 1,
+          "maximum": 16
+        }
+      }
+    },
+    "friends": {
+      "type": "object",
+      "description": "Limits on friend lists.",
+      "additionalProperties": false,
+      "required": ["max_friends"],
+      "properties": {
+        "max_friends": {
+          "type": "integer",
+          "description": "Most friends one player may have. Sending or accepting a request beyond it is refused.",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
+    },
+    "names": {
+      "type": "object",
+      "description": "Display-name rules, applied after trimming surrounding whitespace.",
+      "additionalProperties": false,
+      "required": ["min_length", "max_length", "allowed_pattern", "rename_cooldown_hours", "reserved"],
+      "properties": {
+        "min_length": {
+          "type": "integer",
+          "description": "Fewest characters (Unicode code points) a name may have.",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "max_length": {
+          "type": "integer",
+          "description": "Most characters (Unicode code points) a name may have. Must not be below min_length; Session rejects a document where it is.",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "allowed_pattern": {
+          "type": "string",
+          "description": "Regular expression (Go RE2 syntax) the whole name must match. Anchor it with ^ and $.",
+          "minLength": 2,
+          "maxLength": 200
+        },
+        "rename_cooldown_hours": {
+          "type": "integer",
+          "description": "Hours a player must wait between renames. 0 allows renaming at any time.",
+          "minimum": 0,
+          "maximum": 8760
+        },
+        "reserved": {
+          "type": "array",
+          "description": "Names nobody may take, compared case-insensitively.",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        }
+      }
+    },
+    "lobby": {
+      "type": "object",
+      "description": "What a party leader may choose in the lobby before launching (design/14-launch-handoff.md §2).",
+      "additionalProperties": false,
+      "required": ["settings"],
+      "properties": {
+        "settings": {
+          "type": "object",
+          "description": "One entry per lobby setting, keyed by the setting's name as it appears in the party's settings object. A party's settings may only use these keys, each with one of its allowed values; a key the leader never set takes its default.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,31}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["allowed", "default"],
+            "properties": {
+              "description": {
+                "type": "string",
+                "description": "What the setting means, for designers and the admin UI.",
+                "maxLength": 200
+              },
+              "allowed": {
+                "type": "array",
+                "description": "Every value the leader may pick.",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              },
+              "default": {
+                "type": "string",
+                "description": "The value a new party starts with. Must be one of allowed; Session rejects a document where it isn't.",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

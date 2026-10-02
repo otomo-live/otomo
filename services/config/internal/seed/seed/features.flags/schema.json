@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Feature flags",
+  "description": "Boolean toggles that switch optional client features on or off. A flag absent from the document keeps its default, so a project can add one without rewriting every existing document.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "new_shop": {
+      "type": "boolean",
+      "description": "Show the rebuilt shop interface instead of the legacy one.",
+      "default": false
+    },
+    "seasonal_event": {
+      "type": "boolean",
+      "description": "Enable the currently configured seasonal event content.",
+      "default": false
+    },
+    "chat_enabled": {
+      "type": "boolean",
+      "description": "Allow players to use the in-game chat.",
+      "default": true
+    }
+  }
+}

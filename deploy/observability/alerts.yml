@@ -1,0 +1,68 @@
+# OP-1: the alerting rules, loaded through `rule_files` in prometheus.yml and
+# mounted at /etc/prometheus/alerts.yml beside it in compose.yaml.
+#
+# Nothing delivers these alerts yet: the M1 stack has no Alertmanager, so no
+# page, mail or chat message leaves the VM. They are visible only on Prometheus
+# itself - the /alerts page and /api/v1/alerts - which is enough to prove a rule
+# correct before a receiver exists. Adding Alertmanager later is a new service
+# plus an `alerting:` block in prometheus.yml; the rules do not change.
+#
+# Every rule carries a `severity` label ("critical" or "warning") so a future
+# Alertmanager route can select on it, and a `summary`/`description` pair so the
+# /alerts page says which service and what happened without reading the expr.
+
+groups:
+  - name: otomo-m1
+    rules:
+      # A target being down is the one signal that explains a blank panel and a
+      # failed health probe at the same time. These are the player-facing Go
+      # services whose absence a player notices: auth (login), session (the
+      # profile/party path), patch (releases), allocator (the game-server pool)
+      # and gateway (the player edge). 1m rides out a 15s scrape and a restart
+      # while still describing the current outage. `up` carries the target's
+      # `service` label, so the summary names the service without hard-coding it.
+      - alert: PlayerServiceDown
+        expr: up{job=~"auth|session|patch|allocator|gateway|gameplay-proxy"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} is down"
+          description: >-
+            Prometheus has failed to scrape {{ $labels.service }} (job
+            {{ $labels.job }}) for at least 1 minute. Its metrics and every
+            Dashboard panel built on them are stale.
+
+      # The pool has servers but none a new allocation can use: every one is
+      # reserved or busy. This is the dispatch failure a player sees as "no
+      # servers available", and it is kept separate from an empty pool (below)
+      # because the fix is to free or replace a server, not to start a fleet.
+      # `reserved` counts against free because a reserved server is not
+      # available to the next player; `dead` is excluded on purpose.
+      - alert: NoFreeGameServers
+        expr: sum(allocator_servers{state="free"}) == 0 and sum(allocator_servers{state=~"free|reserved|busy"}) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Allocator has servers but none free"
+          description: >-
+            sum(allocator_servers{state="free"}) is 0 while the pool is
+            non-empty, so every allocation is refused even though servers are
+            registered. Check for servers stuck reserved or busy.
+
+      # No live game server is registered at all. This is expected until ticket
+      # GS-1 deploys the first game servers, which is why it is a warning rather
+      # than a page; after GS-1 an empty pool is a real loss of capacity. 5m
+      # tolerates a single restart or the allocator's registry reconnecting.
+      - alert: GameServerPoolEmpty
+        expr: sum(allocator_servers{state=~"free|reserved|busy"}) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Allocator game-server pool is empty"
+          description: >-
+            No free, reserved or busy game server has been registered for 5
+            minutes. Expected until game servers are deployed (ticket GS-1);
+            after that, players cannot be allocated a server.

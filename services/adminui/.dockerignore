@@ -1,0 +1,30 @@
+# Keep the build context small and, more importantly, keep host-built
+# node_modules out of the image. `COPY . .` would otherwise copy a Linux-less
+# Windows node_modules tree into the builder stage and shadow the `npm ci` the
+# Dockerfile just ran.
+node_modules/
+dist/
+coverage/
+
+# The generated MSW service worker. It is only ever fetched in mock mode, which
+# is imported behind a build-time constant, and it is written to mock/ rather
+# than public/ so that nothing copies it into dist/. Excluding it here keeps it
+# out of the builder stage too, so the image cannot contain a worker that
+# intercepts requests even if a future change made that branch live.
+mock/
+playwright-report/
+test-results/
+blob-report/
+
+.git/
+.github/
+.gitignore
+.gitattributes
+.env
+.env.local
+.env.*.local
+
+*.md
+!README.md
+.vscode/
+.idea/

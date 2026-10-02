@@ -1,0 +1,6 @@
+# Generated on the host at deploy time; never committed. The repository-root
+# .gitignore also covers `deploy/secrets/`; these local patterns keep the guard
+# working if this directory is ever moved or built on its own.
+secrets/
+.env
+valkey/valkey.conf

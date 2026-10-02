@@ -1,0 +1,37 @@
+{
+  "name": "server.tuning",
+  "audience": "server",
+  "description": "Server-side matchmaking tuning. Never shipped to game clients.",
+  "schema": {
+    "schema_version": 1,
+    "created_by": "admin@example.com",
+    "created_at": "2026-09-03T10:00:00Z",
+    "body": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "Server tuning",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "match_window_seconds": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "draft": {
+    "document": { "match_window_seconds": 30 },
+    "revision": 2,
+    "base_version": 1,
+    "updated_by": "admin@example.com",
+    "updated_at": "2026-09-10T12:00:00Z"
+  },
+  "versions": [
+    {
+      "version": 1,
+      "schema_version": 1,
+      "message": "Initial matchmaking window",
+      "created_by": "admin@example.com",
+      "created_at": "2026-09-03T10:05:00Z",
+      "sha256": "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12",
+      "document": { "match_window_seconds": 30 }
+    }
+  ]
+}

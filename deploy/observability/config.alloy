@@ -1,0 +1,92 @@
+// DSH-A3: Grafana Alloy tails this compose project's container logs
+// and pushes them to Loki.
+//
+// Why the Docker socket, and why it is accepted (design/01-dashboard.md §2.1):
+// Alloy discovers containers and reads their logs through the Docker API, which
+// on this host means mounting /var/run/docker.sock. That socket is
+// root-equivalent: anything that can talk to it can start a privileged
+// container, read the host filesystem and reach every other container. It is
+// mounted read-only, but a read-only bind of a Unix socket does not make the API
+// read-only - the HTTP verbs are the caller's choice. The exposure is accepted
+// for M1 because the alternative is a log driver or a privileged sidecar with
+// the same reach, and because Alloy is not internet-reachable itself (it
+// publishes no port). It is the same trust boundary as the deploy account, and
+// NET-1 replaces this discovery with a socket proxy or a Swarm-aware collector.
+
+discovery.docker "containers" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "15s"
+}
+
+// Keep only containers of this compose project, then turn the per-container
+// compose service label into the stream label the Dashboard selects on. Every
+// other Docker metadata label is dropped by the `label_keep` stage below, so the
+// only labels that reach Loki are `service` and `level`.
+discovery.relabel "containers" {
+	targets = []
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		regex         = "otomo"
+		action        = "keep"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+}
+
+loki.source.docker "containers" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.docker.containers.targets
+	labels        = {}
+	relabel_rules = discovery.relabel.containers.rules
+	forward_to    = [loki.process.normalize.receiver]
+}
+
+loki.process "normalize" {
+	forward_to = [loki.write.default.receiver]
+
+	// Services log one JSON object per line through Go's slog, e.g.
+	// {"time":...,"level":"INFO","msg":...}. `level` is upper-case there, while
+	// the Dashboard's LogQL selects the lower-case debug|info|warn|error, so it is
+	// lower-cased and `warning` mapped to `warn`. A non-JSON line is left alone
+	// (the json stage does not drop it by default), keeps `service`, and gets no
+	// `level` label.
+	stage.json {
+		expressions = {
+			level = "level",
+		}
+	}
+
+	stage.template {
+		source   = "level"
+		template = "{{ .Value | ToLower }}"
+	}
+
+	stage.template {
+		source   = "level"
+		template = "{{ if eq .Value \"warning\" }}warn{{ else }}{{ .Value }}{{ end }}"
+	}
+
+	// Promote the extracted, normalized `level`; `service` is already a stream
+	// label from the relabel rules.
+	stage.labels {
+		values = {
+			level = "",
+		}
+	}
+
+	// Hard guarantee for design/01-dashboard.md §2.1: the only stream labels are
+	// `service` and `level`. Anything else a future change adds is dropped here.
+	stage.label_keep {
+		values = ["service", "level"]
+	}
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}

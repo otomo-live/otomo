@@ -1,0 +1,279 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/otomo-live/otomo/services/config/internal/auth"
+)
+
+// TestRouteTableIsWellFormed checks the table the whole service is built from: no
+// pattern is registered twice (ServeMux would panic at start-up on a duplicate, which
+// is worse than a test failure) and every route is under the service's own prefix, so
+// a typo cannot register a route Gateway will never forward to.
+func TestRouteTableIsWellFormed(t *testing.T) {
+	seen := make(map[string]Route)
+	for _, rt := range Routes() {
+		if rt.Method == "" || rt.Path == "" {
+			t.Errorf("incomplete route: %+v", rt)
+			continue
+		}
+		if !strings.HasPrefix(rt.Path, "/api/admin/config/") {
+			t.Errorf("%s %s is outside /api/admin/config/", rt.Method, rt.Path)
+		}
+		if rt.MinRole == 0 {
+			t.Errorf("%s %s requires no role", rt.Method, rt.Path)
+		}
+		// Registering them all proves the patterns are ones ServeMux accepts.
+		if _, dup := seen[rt.Pattern()]; dup {
+			t.Errorf("duplicate route %s", rt.Pattern())
+		}
+		seen[rt.Pattern()] = rt
+	}
+	if len(seen) < 19 {
+		t.Errorf("the table has %d routes; §5 lists 19", len(seen))
+	}
+}
+
+// TestLivePublishIsAdminOnly is the one row of §5 whose specificity is load-bearing:
+// POST /channels/live/releases must resolve to admin, while every other channel
+// resolves to the wildcard's live_ops. If the two entries were merged or reordered,
+// publishing to production would silently drop to the lower bar.
+func TestLivePublishIsAdminOnly(t *testing.T) {
+	// A fresh mux per lookup, so ServeMux — not this test — decides which of the two
+	// overlapping entries a path resolves to.
+	roleOf := func(method, path string) (auth.Role, bool) {
+		for _, rt := range Routes() {
+			if rt.Method != method {
+				continue
+			}
+			probe := http.NewServeMux()
+			probe.Handle(rt.Pattern(), http.NotFoundHandler())
+			r := httptest.NewRequest(method, path, nil)
+			if _, pattern := probe.Handler(r); pattern == rt.Pattern() {
+				return rt.MinRole, true
+			}
+		}
+		return 0, false
+	}
+
+	tests := []struct {
+		path string
+		want auth.Role
+	}{
+		{"/api/admin/config/channels/live/releases", auth.RoleAdmin},
+		{"/api/admin/config/channels/dev/releases", auth.RoleLiveOps},
+		{"/api/admin/config/channels/staging/releases", auth.RoleLiveOps},
+	}
+	for _, tt := range tests {
+		got, ok := roleOf(http.MethodPost, tt.path)
+		if !ok {
+			t.Errorf("no route matches POST %s", tt.path)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("POST %s requires %s, want %s", tt.path, got, tt.want)
+		}
+	}
+}
+
+// TestNotFoundOrMethodNotAllowed is the behaviour COM-5 asks for that net/http does not
+// give on its own: its own 405 is a plain-text body with no envelope.
+func TestNotFoundOrMethodNotAllowed(t *testing.T) {
+	routes := Routes()
+	fallback := NotFoundOrMethodNotAllowed(routes)
+
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+		wantCode   string
+		wantAllow  string
+	}{
+		{
+			name:       "unknown path",
+			method:     http.MethodGet,
+			path:       "/api/admin/config/nope",
+			wantStatus: http.StatusNotFound,
+			wantCode:   "not_found",
+		},
+		{
+			name:       "wrong method on a real path",
+			method:     http.MethodDelete,
+			path:       "/api/admin/config/namespaces",
+			wantStatus: http.StatusMethodNotAllowed,
+			wantCode:   "method_not_allowed",
+			wantAllow:  "GET, HEAD, POST",
+		},
+		{
+			// The wildcard is resolved by the pattern matcher, which is why the allowed
+			// methods come from a probe mux rather than from string equality: {ns} has
+			// to match "gameplay" before the answer means anything.
+			name:       "wrong method under a wildcard",
+			method:     http.MethodDelete,
+			path:       "/api/admin/config/namespaces/gameplay/diff",
+			wantStatus: http.StatusMethodNotAllowed,
+			wantCode:   "method_not_allowed",
+			wantAllow:  "GET, HEAD",
+		},
+		{
+			name:       "outside the service's prefix",
+			method:     http.MethodGet,
+			path:       "/metrics",
+			wantStatus: http.StatusNotFound,
+			wantCode:   "not_found",
+		},
+		{
+			name:       "root",
+			method:     http.MethodGet,
+			path:       "/",
+			wantStatus: http.StatusNotFound,
+			wantCode:   "not_found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(tt.method, tt.path, nil)
+			r = r.WithContext(WithRequestID(r.Context(), "req-1"))
+			w := httptest.NewRecorder()
+
+			fallback(w, r)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
+			}
+			if got := w.Header().Get("Allow"); got != tt.wantAllow {
+				t.Errorf("Allow = %q, want %q", got, tt.wantAllow)
+			}
+
+			var body errorBody
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatalf("body is not the COM-5 envelope: %v (%s)", err, w.Body.String())
+			}
+			if body.Error.Code != tt.wantCode {
+				t.Errorf("code = %q, want %q", body.Error.Code, tt.wantCode)
+			}
+			if body.Error.Message == "" {
+				t.Error("message is empty")
+			}
+			if body.Error.RequestID != "req-1" {
+				t.Errorf("request_id = %q, want req-1", body.Error.RequestID)
+			}
+			if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("Content-Type = %q, want application/json", ct)
+			}
+		})
+	}
+}
+
+func TestWriteErrorWithoutARequestID(t *testing.T) {
+	w := httptest.NewRecorder()
+	WriteError(w, httptest.NewRequest(http.MethodGet, "/", nil), http.StatusForbidden, "insufficient_role", "nope")
+
+	var body errorBody
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body: %v", err)
+	}
+	if body.Error.RequestID != "" {
+		t.Errorf("request_id = %q, want empty", body.Error.RequestID)
+	}
+	if body.Error.Code != "insufficient_role" {
+		t.Errorf("code = %q", body.Error.Code)
+	}
+}
+
+func TestRequestIDRoundTrip(t *testing.T) {
+	if RequestID(t.Context()) != "" {
+		t.Error("RequestID returned a value for a context that never carried one")
+	}
+	if got := RequestID(WithRequestID(t.Context(), "abc")); got != "abc" {
+		t.Errorf("RequestID = %q, want abc", got)
+	}
+}
+
+func TestHealthz(t *testing.T) {
+	w := httptest.NewRecorder()
+	Healthz(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "ok") {
+		t.Errorf("body = %q", w.Body.String())
+	}
+}
+
+// TestReadyz reports a 503 while a dependency is unhappy, and names the dependency: a
+// readiness probe that only says "not ready" is a probe nobody can act on.
+func TestReadyz(t *testing.T) {
+	t.Run("no check", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		Readyz(nil)(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		if w.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", w.Code)
+		}
+	})
+
+	t.Run("passing check", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		Readyz(func(context.Context) error { return nil })(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		if w.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", w.Code)
+		}
+	})
+
+	t.Run("failing check", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		check := func(context.Context) error {
+			return errors.New("postgres unreachable: dial tcp: refused")
+		}
+		Readyz(check)(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want 503", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), "postgres unreachable") {
+			t.Errorf("body does not name the failing dependency: %q", w.Body.String())
+		}
+	})
+
+	t.Run("check sees the request context", func(t *testing.T) {
+		// A check that cannot see the caller's context cannot stop on a client
+		// disconnect, which matters for the database ping behind it.
+		var got context.Context
+		check := func(ctx context.Context) error {
+			got = ctx
+			return nil
+		}
+		r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		Readyz(check)(httptest.NewRecorder(), r)
+		if got == nil {
+			t.Fatal("the check was not called")
+		}
+		if got != r.Context() {
+			t.Error("the check did not receive the request's context")
+		}
+	})
+}
+
+func TestNotImplementedIsAValidHandler(t *testing.T) {
+	w := httptest.NewRecorder()
+	NotImplemented(w, httptest.NewRequest(http.MethodGet, "/api/admin/config/namespaces", nil))
+
+	if w.Code != http.StatusNotImplemented {
+		t.Errorf("status = %d, want 501", w.Code)
+	}
+	var body errorBody
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body: %v", err)
+	}
+	if body.Error.Code != "not_implemented" {
+		t.Errorf("code = %q, want not_implemented", body.Error.Code)
+	}
+}

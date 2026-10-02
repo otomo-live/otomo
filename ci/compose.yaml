@@ -1,0 +1,133 @@
+# The CI test stack: what ci/services/Jenkinsfile runs every service's checks and
+# smoke test in. It is NOT the deploy stack (deploy/compose.yaml), and the two
+# must stay apart, because Jenkins runs on the same VM as that stack:
+#
+# - Every Jenkins build starts this file under its own project name
+#   (COMPOSE_PROJECT_NAME, set per build in the Jenkinsfile), so two builds never
+#   share a container, a network or a database, and `down -v` at the end of one
+#   build removes only what that build created.
+# - Nothing publishes a port. Tests reach Postgres and Valkey by Compose DNS on
+#   the project's own network, and the smoke scripts bind 127.0.0.1 inside the
+#   `go` container. The host ports the old per-service `docker run -p` used
+#   (5000-5010) are free again; 5000 is the deploy stack's registry.
+# - Postgres and Valkey keep nothing: data is on tmpfs, the passwords are the
+#   literal `ci`, and every build starts from an empty cluster.
+#
+# The only state that outlives a build is the four caches at the bottom, which
+# are `external` so that `down -v` leaves them alone. The Jenkinsfile creates
+# them (`docker volume create` is a no-op when they exist). COM-12 asks for
+# GOMODCACHE and GOCACHE to be kept between builds; both caches are safe to share
+# between concurrent builds, because the go command locks them itself.
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
+      POSTGRES_DB: ci
+    # Durability settings are off because the data is thrown away at the end of
+    # the build anyway. max_connections covers every service's test pool at once
+    # with room to spare; shared_buffers is small because this runs next to the
+    # deploy stack and a game server on a 3.8 GB host.
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=60
+    tmpfs:
+      - /var/lib/postgresql/data:size=512m
+    volumes:
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # session_smoke is the last database 01-databases.sql creates. Postgres's
+      # entrypoint runs the init scripts against a temporary server that already
+      # answers pg_isready, so asking for the last database is what makes
+      # "healthy" mean "provisioned" (the same reasoning as deploy/compose.yaml).
+      test: ["CMD-SHELL", "pg_isready -U ci -d session_smoke"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    # No persistence: nothing here needs to survive a restart.
+    command: ["valkey-server", "--requirepass", "ci", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli --no-auth-warning -a ci ping | grep -q PONG"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # The Go toolchain, pinned to the version every go.mod and dockerfile names. The
+  # whole checkout is mounted, not one service, because the checks use
+  # services/go.work (as .github/workflows/ci.yml does) and the drift check reads
+  # both gateways.
+  go:
+    image: golang:1.27.1-bookworm
+    profiles: [tools]
+    working_dir: /src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    environment:
+      # Never download a different toolchain: the image is the pin.
+      GOTOOLCHAIN: local
+      # The checkout belongs to the Jenkins user and this container runs as root,
+      # so git refuses to read it ("dubious ownership") and `go build` fails while
+      # stamping VCS information. The smoke scripts build binaries, so turn the
+      # stamping off; nothing in CI reads it.
+      GOFLAGS: -buildvcs=false
+      # Read by the DB-backed tests, which skip when these are unset. patch reads
+      # Config's database (it owns no schema), so it points at config_test, which
+      # ci/scripts/go-checks.sh migrates first.
+      ADMIN_AUTH_TEST_DATABASE_URL: postgres://ci:ci@postgres:5432/admin_auth_test?sslmode=disable
+      ALLOCATOR_TEST_DATABASE_URL: postgres://ci:ci@postgres:5432/allocator_test?sslmode=disable
+      AUTH_TEST_DATABASE_URL: postgres://ci:ci@postgres:5432/auth_test?sslmode=disable
+      CONFIG_TEST_DATABASE_URL: postgres://ci:ci@postgres:5432/config_test?sslmode=disable
+      PATCH_TEST_DATABASE_URL: postgres://ci:ci@postgres:5432/config_test?sslmode=disable
+      SESSION_TEST_DATABASE_URL: postgres://ci:ci@postgres:5432/session_test?sslmode=disable
+      SESSION_TEST_VALKEY_URL: valkey://default:ci@valkey:6379/0
+      # Read by services/session/smoke.sh. A database of its own, so the smoke
+      # test's migrations never meet the unit tests' rows.
+      SESSION_DATABASE_URL: postgres://ci:ci@postgres:5432/session_smoke?sslmode=disable
+      SESSION_VALKEY_URL: valkey://default:ci@valkey:6379/1
+    volumes:
+      - ..:/src
+      - gomod:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+
+  # adminui's toolchain. The Node major matches services/adminui/.nvmrc and the
+  # build stage of its dockerfile.
+  node:
+    image: node:24-bookworm-slim
+    profiles: [tools]
+    working_dir: /src/services/adminui
+    volumes:
+      - ..:/src
+      # node_modules lives on a volume rather than in the checkout: an install
+      # into the workspace would leave a root-owned, glibc-linked tree there. It is
+      # per project, so `down -v` removes it and `npm ci` starts clean every build.
+      - adminui-node_modules:/src/services/adminui/node_modules
+      - npm-cache:/root/.npm
+
+volumes:
+  adminui-node_modules:
+  gomod:
+    name: otomo-ci-gomod
+    external: true
+  gocache:
+    name: otomo-ci-gocache
+    external: true
+  npm-cache:
+    name: otomo-ci-npm-cache
+    external: true

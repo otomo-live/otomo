@@ -1,0 +1,29 @@
+{
+  "services": [
+    { "name": "config", "up": true, "last_scrape_at": "2026-09-22T10:14:45Z", "scrape_error": "" },
+    {
+      "name": "dashboard",
+      "up": true,
+      "last_scrape_at": "2026-09-22T10:14:45Z",
+      "scrape_error": ""
+    },
+    {
+      "name": "gateway_dev",
+      "up": true,
+      "last_scrape_at": "2026-09-22T10:14:45Z",
+      "scrape_error": ""
+    },
+    {
+      "name": "admin-auth",
+      "up": true,
+      "last_scrape_at": "2026-09-22T10:14:45Z",
+      "scrape_error": ""
+    },
+    {
+      "name": "patch",
+      "up": false,
+      "last_scrape_at": "2026-09-22T10:09:15Z",
+      "scrape_error": "connection refused"
+    }
+  ]
+}

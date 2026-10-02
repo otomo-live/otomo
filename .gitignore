@@ -1,0 +1,17 @@
+*.exe
+handoff/
+
+# Archives. This repo is source-only:
+# nothing here is built from a checked-in tarball, and a Go toolchain tarball
+# dropped into a service directory is both ~70 MB on every clone and part of
+# every docker build context via `COPY . .`.
+*.tar.gz
+*.tgz
+
+# Deploy-time secrets (COM-9). A tracked template always has an `.example`
+# suffix: deploy/.env.example, deploy/valkey/valkey.conf.example,
+# services/*/.env.example. These three patterns are the generated counterparts,
+# and nothing here is ever committed.
+.env
+deploy/secrets/
+deploy/valkey/valkey.conf

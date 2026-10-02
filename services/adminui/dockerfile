@@ -1,0 +1,73 @@
+# Built by ci/services/Jenkinsfile as:
+#   docker build -t otomo-${SERVICE}:staging services/${SERVICE}
+# The build context is this directory, so every path below is relative to
+# services/adminui/. Lowercase `dockerfile` to match services/gateway_dev; the
+# builder matches the name case-insensitively.
+#
+# COM-11 does not apply here (it is the Go service shape). This is WEB-6: Node
+# builds, nginx serves, no Node in the final image, SPA fallback, long cache on
+# hashed assets, no-cache on index.html and env.json.
+
+FROM node:24-bookworm-slim AS build
+
+WORKDIR /src
+
+# The manifest and lockfile first, so the dependency layer is cached against
+# them alone: editing a .vue file must not re-install node_modules. `npm ci`
+# rather than `npm install`, because it installs exactly the lockfile and fails
+# when the two disagree, which is the behaviour a deployable image wants.
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
+
+COPY . .
+
+# No VITE_ENABLE_MOCK and no .env of any kind. The API base URL is deliberately
+# not a build-time value: it comes from /admin/env.json at runtime (WEB-2), so
+# one image serves dev, staging and live. Anything baked in at this point is
+# public, which is why .env.example holds no secret.
+#
+# No `npm run typecheck` here either: ci/services/Jenkinsfile and the GitHub
+# workflow both run lint, typecheck and test as their own stages, and repeating
+# them in the image build would double the slowest part of the pipeline for the
+# same coverage.
+RUN npm run build
+
+# nginxinc/nginx-unprivileged, not nginx: the stack requires the service to run
+# non-root (09-auth-skeleton-docs), and this variant is built for it: uid 101, a
+# pid file under /tmp and temp paths it can actually write. It serves on 8080.
+FROM nginxinc/nginx-unprivileged:1.29-alpine
+
+# dist/ as Vite emits it holds index.html, the hashed assets/ tree and the
+# public/ directory's contents (env.json among them). It is placed under
+# /usr/share/nginx/html/admin so that the /admin/ prefix in the URL is a real
+# directory on disk, which is what lets nginx.conf's try_files resolve it with
+# no rewrite. It also puts the overridable runtime config at
+# /usr/share/nginx/html/admin/env.json, the path WEB-2 and the README name.
+COPY --from=build /src/dist /usr/share/nginx/html/admin
+
+# The base image's default server block listens on the same port as ours, and
+# which of the two becomes the default server decides whether a request reaches
+# the admin UI or the nginx welcome page. Removing it makes that a property of
+# this build rather than of the base image's file layout.
+#
+# As root, and back to the image's own uid afterwards: /etc/nginx/conf.d is
+# root-owned in the base image (it does not chown it), so the unprivileged user
+# cannot delete from it. COPY ignores USER, which is why only this one step needs
+# the switch. The ARG mirrors the base image's own `ARG UID=101`; a build that
+# overrides UID there has to pass the same value here.
+ARG UID=101
+
+USER root
+COPY nginx.conf /etc/nginx/conf.d/adminui.conf
+COPY security-headers.conf /etc/nginx/adminui-security-headers.conf
+RUN rm -f /etc/nginx/conf.d/default.conf
+USER $UID
+
+# No ENTRYPOINT or CMD: the base image's docker-entrypoint.sh is what runs the
+# /docker-entrypoint.d/ scripts (envsubst templates, ipv6 listen, worker tuning)
+# and then execs nginx, and overriding it would silently drop all of that.
+#
+# No HEALTHCHECK either. A static file server that has booted has nothing to
+# probe, and the one thing worth checking, that the bundle is there, is what the
+# gateway's own readiness covers once the route is wired.

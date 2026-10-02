@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Message of the day",
+  "description": "The banner the client shows on the login and character-select screens, optionally limited to a time window.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "description": "Whether the message is shown at all.",
+      "default": false
+    },
+    "title": {
+      "type": "string",
+      "description": "Short headline shown above the body.",
+      "maxLength": 80
+    },
+    "body": {
+      "type": "string",
+      "description": "The message text.",
+      "maxLength": 1000
+    },
+    "severity": {
+      "type": "string",
+      "description": "How prominently the message is styled.",
+      "enum": [
+        "info",
+        "warning",
+        "maintenance"
+      ]
+    },
+    "starts_at": {
+      "type": "string",
+      "description": "When the message begins to be shown, as an RFC 3339 timestamp. Absent means immediately.",
+      "format": "date-time"
+    },
+    "ends_at": {
+      "type": "string",
+      "description": "When the message stops being shown, as an RFC 3339 timestamp. Absent means indefinitely.",
+      "format": "date-time"
+    }
+  }
+}

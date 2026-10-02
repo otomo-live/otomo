@@ -1,0 +1,2 @@
+# The binary `go build` leaves here; the image builds it in the dockerfile.
+/gameplay_proxy

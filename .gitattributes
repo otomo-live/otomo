@@ -1,0 +1,21 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# COM-1: pin LF on everything a container reads directly. A CRLF shebang,
+# SQL statement or entrypoint fails inside the image with confusing errors.
+#
+# `*.yaml` as well as `*.yml`, and `*.example` as well as the final name: the
+# Compose file added by COM-7 is compose.yaml, and the tracked templates for
+# deploy-time files are .env.example and valkey.conf.example. Neither extension
+# was covered before, and both are parsed by something that does not strip a
+# carriage return: a CRLF in an env file ends up inside the value, and a CRLF in
+# `valkey.conf` ends up inside the password.
+*.sh        text eol=lf
+*.sql       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.conf      text eol=lf
+*.example   text eol=lf
+Dockerfile  text eol=lf
+dockerfile  text eol=lf
+Jenkinsfile text eol=lf

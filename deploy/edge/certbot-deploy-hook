@@ -1,0 +1,14 @@
+#!/bin/sh
+# Installed as /usr/local/sbin/otomo-edge-reload by deploy/edge/certbot.sh and
+# recorded by certbot as the certificate's deploy hook: after every issue and
+# renewal it tells the edge container to re-render (bootstrap → TLS on the first
+# certificate) and reload nginx gracefully. certbot skips deploy hooks on dry runs.
+set -eu
+cid=$(docker ps -q \
+    --filter label=com.docker.compose.project=otomo \
+    --filter label=com.docker.compose.service=edge | head -n 1)
+if [ -z "$cid" ]; then
+    logger -t otomo-edge "certificate renewed but no edge container is running; it will pick the certificate up when it starts"
+    exit 0
+fi
+docker exec "$cid" edge-reload 2>&1 | logger -t otomo-edge

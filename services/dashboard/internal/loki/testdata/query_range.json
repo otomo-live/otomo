@@ -1,0 +1,21 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "streams",
+    "result": [
+      {
+        "stream": {"service": "gateway", "level": "info"},
+        "values": [
+          ["1700000000000000000", "hello"],
+          ["1700000002000000000", "{\"msg\":\"second\",\"request_id\":\"abc\"}"]
+        ]
+      },
+      {
+        "stream": {"service": "config", "level": "error"},
+        "values": [
+          ["1700000001000000000", "boom"]
+        ]
+      }
+    ]
+  }
+}

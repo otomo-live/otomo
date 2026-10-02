@@ -1,0 +1,48 @@
+{
+  "status": "success",
+  "data": {
+    "alerts": [
+      {
+        "labels": {
+          "alertname": "PlayerServiceDown",
+          "severity": "critical",
+          "service": "players"
+        },
+        "annotations": {
+          "summary": "Player service is down",
+          "description": "players has failed its health check for 5 minutes"
+        },
+        "state": "firing",
+        "activeAt": "2024-05-01T10:00:00.123456789Z",
+        "value": "1"
+      },
+      {
+        "labels": {
+          "alertname": "GameServerPoolEmpty",
+          "severity": "warning"
+        },
+        "annotations": {
+          "summary": "Game server pool is empty",
+          "description": "no free game servers are available"
+        },
+        "state": "firing",
+        "activeAt": "2024-05-01T10:01:00Z",
+        "value": "1"
+      },
+      {
+        "labels": {
+          "alertname": "NoFreeGameServers",
+          "severity": "critical",
+          "service": "lobby"
+        },
+        "annotations": {
+          "summary": "No free game servers",
+          "description": "the pool has been full for 2 minutes"
+        },
+        "state": "pending",
+        "activeAt": "2024-05-01T10:02:00Z",
+        "value": "1"
+      }
+    ]
+  }
+}

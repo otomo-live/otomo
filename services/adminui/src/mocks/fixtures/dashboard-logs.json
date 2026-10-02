@@ -1,0 +1,126 @@
+{
+  "frame_interval_ms": 300,
+  "lines": [
+    {
+      "at": "2026-09-22T10:14:44Z",
+      "service": "config",
+      "level": "info",
+      "message": "draft saved namespace=balance.weapons revision=12"
+    },
+    {
+      "at": "2026-09-22T10:14:41Z",
+      "service": "gateway_dev",
+      "level": "info",
+      "message": "request route=/api/admin/config/namespaces status=200 duration_ms=14",
+      "fields": {
+        "request_id": "req_0000000000a1",
+        "route": "/api/admin/config/namespaces",
+        "status": 200,
+        "duration_ms": 14
+      }
+    },
+    {
+      "at": "2026-09-22T10:14:38Z",
+      "service": "dashboard",
+      "level": "debug",
+      "message": "cache hit endpoint=/overview bucket=1789"
+    },
+    {
+      "at": "2026-09-22T10:14:30Z",
+      "service": "config",
+      "level": "warn",
+      "message": "validation failed namespace=balance.weapons errors=1"
+    },
+    {
+      "at": "2026-09-22T10:14:22Z",
+      "service": "admin-auth",
+      "level": "info",
+      "message": "staff login result=ok mfa=true"
+    },
+    {
+      "at": "2026-09-22T10:14:15Z",
+      "service": "gateway_dev",
+      "level": "info",
+      "message": "token accepted issuer=admin-auth aud=otomo:staff"
+    },
+    {
+      "at": "2026-09-22T10:13:58Z",
+      "service": "config",
+      "level": "error",
+      "message": "blob write failed sha256=3b8e1d5a: no space left on device",
+      "fields": {
+        "request_id": "req_0000000000b2",
+        "sha256": "3b8e1d5a",
+        "disk": "full"
+      }
+    },
+    {
+      "at": "2026-09-22T10:13:51Z",
+      "service": "dashboard",
+      "level": "info",
+      "message": "audit merge sources=2 entries=5"
+    },
+    {
+      "at": "2026-09-22T10:13:40Z",
+      "service": "gateway_dev",
+      "level": "warn",
+      "message": "upstream slow route=/api/admin/dashboard/logs duration_ms=1840"
+    },
+    {
+      "at": "2026-09-22T10:13:33Z",
+      "service": "admin-auth",
+      "level": "warn",
+      "message": "refresh rejected reason=expired"
+    },
+    {
+      "at": "2026-09-22T10:13:20Z",
+      "service": "config",
+      "level": "info",
+      "message": "version created namespace=balance.weapons version=11"
+    },
+    {
+      "at": "2026-09-22T10:13:05Z",
+      "service": "patch",
+      "level": "error",
+      "message": "manifest fetch failed channel=live err=connection refused"
+    }
+  ],
+  "frames": [
+    {
+      "at": "2026-09-22T10:15:01Z",
+      "service": "gateway_dev",
+      "level": "info",
+      "message": "request route=/api/admin/dashboard/overview status=200 duration_ms=11"
+    },
+    {
+      "at": "2026-09-22T10:15:04Z",
+      "service": "config",
+      "level": "info",
+      "message": "draft read namespace=balance.weapons revision=12"
+    },
+    {
+      "at": "2026-09-22T10:15:07Z",
+      "service": "admin-auth",
+      "level": "info",
+      "message": "token refresh result=ok"
+    },
+    {
+      "at": "2026-09-22T10:15:10Z",
+      "service": "gateway_dev",
+      "level": "warn",
+      "message": "upstream slow route=/api/admin/dashboard/logs/tail duration_ms=2010"
+    },
+    {
+      "at": "2026-09-22T10:15:13Z",
+      "service": "dashboard",
+      "level": "debug",
+      "message": "tail opened by staff usr_viewer"
+    },
+    {
+      "at": "2026-09-22T10:15:16Z",
+      "service": "config",
+      "level": "info",
+      "message": "audit read page=1 limit=4"
+    }
+  ]
+}

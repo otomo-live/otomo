@@ -1,0 +1,10 @@
+#!/bin/sh
+# Re-render and reload without dropping connections. Called by the host's certbot
+# deploy hook (deploy/edge/certbot-deploy-hook) after an issue or renewal, and by
+# hand after changing the edge's environment. A config that fails `nginx -t` is
+# never loaded: the running one keeps serving.
+set -eu
+edge-render
+nginx -t -q
+nginx -s reload
+echo "edge-reload: reloaded"

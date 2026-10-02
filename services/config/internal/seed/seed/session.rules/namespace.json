@@ -1,0 +1,4 @@
+{
+  "audience": "server",
+  "description": "The Level 1 game rules Session enforces: party and friend limits, display-name rules and the lobby settings a party leader may choose."
+}

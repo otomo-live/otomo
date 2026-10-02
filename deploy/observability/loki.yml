@@ -1,0 +1,70 @@
+# DSH-A2: Loki in single-binary mode, filesystem storage on the
+# `loki-data` volume. It is deliberately small: the Dashboard only needs a
+# searchable window of service logs, not an archive, so retention is 72h and the
+# limits below are sized for this one VM rather than for a shared Loki.
+#
+# `auth_enabled: false` because Loki is never published: it is reachable only by
+# the Dashboard and Alloy on otomo-net, and the compose stack does not publish
+# its port (deploy/compose.yaml, "no published ports"). The moment it is exposed
+# that has to change.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: warn
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+  filesystem:
+    directory: /loki/chunks
+
+# DSH-A2: retention is enforced by the compactor, not by deleting chunks at
+# write time. `delete_request_store` must name the same backend the chunks live
+# on, otherwise the compactor accepts a retention request it cannot carry out.
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+  compaction_interval: 10m
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+
+limits_config:
+  retention_period: 72h
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  # Small ceilings on purpose: one VM, a handful of services, and a burst of
+  # container log lines must not be able to fill the disk or starve the query
+  # path. These are per-tenant limits; there is only the one default tenant.
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 8
+  max_streams_per_user: 10000
+  max_global_streams_per_user: 10000
+  max_query_series: 500
+  max_query_parallelism: 16
+  max_entries_limit_per_query: 5000

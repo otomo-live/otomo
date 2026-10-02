@@ -1,0 +1,17 @@
+FROM golang:1.27.1-bookworm AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+ARG GIT_SHA=dev
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${GIT_SHA}" -o /out/session .
+
+# Distroless: no shell, no package manager, and a non-root user by default. This service
+# writes nothing to disk — its state is in Postgres and Valkey — so there is no volume to
+# create or own.
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/session /session
+EXPOSE 8080 8081 9090
+ENTRYPOINT ["/session"]
+CMD ["serve"]

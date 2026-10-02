@@ -1,0 +1,7 @@
+{
+  "max_health": 100,
+  "move_speed": 4.5,
+  "stamina_regen_per_s": 8,
+  "starting_gold": 250,
+  "level_cap": 60
+}

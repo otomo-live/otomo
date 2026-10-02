@@ -1,0 +1,16 @@
+go 1.27.1
+
+use (
+	./admin_auth
+	./allocator
+	./auth
+	./cli
+	./config
+	./dashboard
+	./gameplay_proxy
+	./gateway
+	./gateway_dev
+	./matchmaker
+	./patch
+	./session
+)

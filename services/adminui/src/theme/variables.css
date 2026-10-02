@@ -1,0 +1,16 @@
+/* Mono and code rules only. Every colour and every scale lives in tokens.css;
+ * this file keeps the monospace alias and the elements that use it, so a
+ * framework upgrade cannot drift from the design system's colour set. */
+
+:root {
+  /* Kept as an alias of the design system token so existing code and the
+   * CodeMirror theme keep working without a rename. */
+  --app-font-mono: var(--ds-font-mono);
+}
+
+code,
+pre,
+.app-mono {
+  font-family: var(--app-font-mono);
+  font-size: 0.875em;
+}

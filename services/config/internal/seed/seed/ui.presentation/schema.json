@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UI presentation",
+  "description": "Maps a Config namespace name to optional presentation metadata. Degradation is deliberate and one-way: a name this document mentions that the target namespace does not define is ignored, and a field the target schema defines that this document does not mention is appended to a trailing group. That is what lets a game add a column without every presentation document having to be rewritten.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "title": { "type": "string" },
+      "order": { "type": "array", "items": { "type": "string" } },
+      "groups": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["label", "fields"],
+          "properties": {
+            "label": { "type": "string" },
+            "fields": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "render": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "style": { "type": "string", "enum": ["list", "table", "form"] },
+          "item": { "type": "object" }
+        }
+      }
+    }
+  }
+}

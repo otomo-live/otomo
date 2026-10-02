@@ -1,0 +1,136 @@
+# DSH-A1: the scrape configuration for the dashboard's metrics
+# store. Every series carries a `service` label, which is the one label the
+# Dashboard's PromQL templates select on (design/01-dashboard.md §2.2,
+# services/dashboard/internal/promql). The value is the service's compose name
+# (README.md "The observability stack"), so a query and a target agree on one
+# spelling.
+#
+# One static job per target rather than one job with many targets: the target's
+# `service` label is fixed here, and a per-job static_config is the smallest way
+# to say "this address is this service" without a relabel rule that can silently
+# match nothing. The Go services listen on their internal metrics port 9090,
+# which is never published to the host.
+
+global:
+  # DSH-A1 pins the scrape interval at 15s; the overview auto-refreshes on the
+  # same period, so a point is never more than one refresh stale.
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+# OP-1: the alerting rules. The path is relative to this file, so Prometheus
+# reads /etc/prometheus/alerts.yml inside the container (compose.yaml mounts it
+# beside this config). Nothing routes these yet - there is no Alertmanager in
+# the stack - so they surface only as active alerts on Prometheus itself
+# (/alerts and /api/v1/alerts).
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  # --- the Go services (internal :9090) -------------------------------------
+
+  - job_name: auth
+    static_configs:
+      - targets: ["auth:9090"]
+        labels:
+          service: auth
+
+  # Every `service` label is the compose service name, the same name Alloy puts on
+  # the logs and DASHBOARD_TARGETS gives the health prober, so the Dashboard sees
+  # one identity per service (`admin-auth`, not also `admin_auth`).
+  - job_name: admin-auth
+    static_configs:
+      - targets: ["admin-auth:9090"]
+        labels:
+          service: admin-auth
+
+  - job_name: config
+    static_configs:
+      - targets: ["config:9090"]
+        labels:
+          service: config
+
+  - job_name: patch
+    static_configs:
+      - targets: ["patch:9090"]
+        labels:
+          service: patch
+
+  # OP-1: the Session service (internal-only; session_http_* and
+  # session_build_info today, its domain metrics as design/13 SE-3 adds them).
+  - job_name: session
+    static_configs:
+      - targets: ["session:9090"]
+        labels:
+          service: session
+
+  # The Allocator (internal-only; allocator_* series, design/15 §4.5).
+  # The Gameplay Proxy (internal :9090; gameplay_proxy_* series).
+  - job_name: gameplay-proxy
+    static_configs:
+      - targets: ["gameplay-proxy:9090"]
+        labels:
+          service: gameplay-proxy
+
+  - job_name: allocator
+    static_configs:
+      - targets: ["allocator:9090"]
+        labels:
+          service: allocator
+
+  - job_name: gateway
+    static_configs:
+      - targets: ["gateway:9090"]
+        labels:
+          service: gateway
+
+  - job_name: gateway_dev
+    static_configs:
+      - targets: ["gateway_dev:9090"]
+        labels:
+          service: gateway_dev
+
+  - job_name: dashboard
+    static_configs:
+      - targets: ["dashboard:9090"]
+        labels:
+          service: dashboard
+
+  # --- exporters and the observability stack itself (DSH-A4) ----------------
+
+  - job_name: node_exporter
+    static_configs:
+      - targets: ["node_exporter:9100"]
+        labels:
+          service: node_exporter
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels:
+          service: cadvisor
+
+  - job_name: postgres_exporter
+    static_configs:
+      - targets: ["postgres_exporter:9187"]
+        labels:
+          service: postgres_exporter
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          service: prometheus
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          service: loki
+
+  - job_name: alloy
+    static_configs:
+      # Alloy exposes its own /metrics on its HTTP UI listener.
+      - targets: ["alloy:12345"]
+        labels:
+          service: alloy

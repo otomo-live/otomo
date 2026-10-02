@@ -1,0 +1,23 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "up",
+          "instance": "gateway:9090",
+          "job": "gateway",
+          "service": "gateway"
+        },
+        "value": [1789000000, "1"]
+      },
+      {
+        "metric": {
+          "service": "config"
+        },
+        "value": [1789000000, "0"]
+      }
+    ]
+  }
+}
