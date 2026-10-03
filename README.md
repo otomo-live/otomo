@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/otomo.png" alt="otomo - self-hosted, vendor-neutral backend for Godot live-service games" />
+</p>
+
 # otomo
 
 Self-hosted, vendor-neutral backend for Godot live-service games.
@@ -53,6 +57,11 @@ The full documentation is in [`docs/`](docs/index.md).
 
 - `main`: the latest release. Deploy from here.
 - `staging`: the next release. Pull requests go here.
+
+## Roadmap
+
+Matchmaking, platform logins, a CLI, CDN delivery, server-side extensions and modules: see
+[ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
