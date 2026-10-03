@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="otomo.png" alt="otomo - self-hosted, vendor-neutral backend for Godot live-service games" />
+</p>
+
 # Otomo documentation
 
 **Otomo** is a self-hosted, open-source backend for Godot live-service games. It's the
